@@ -74,7 +74,9 @@ you if your cookie banner is missing the Live chat switch.
   around (and every 30 seconds while the tab is in front), claimed with their
   own `x-chat-presence` secret. The basket is read from the shop's own
   `localStorage` copy (ids and quantities) and named from `shp_products` on the
-  server, when that table exists. Trails are deleted 7 days after the visitor
+  server, when that table exists. A closing tab says goodbye to
+  `/api/m/chat/widget/leave`, so the visitor leaves the list at once rather
+  than 90 seconds later. Trails are deleted 7 days after the visitor
   was last seen, or at once if they withdraw consent.
 - Attachments are written under `media/chat/<conversation>/` with an
   unguessable key and served only through `/api/m/chat/attachments/<id>`,

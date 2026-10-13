@@ -20,6 +20,8 @@ export type ChatVisitor = {
   cartUpdatedAt: Date | null
   firstSeenAt: Date
   lastSeenAt: Date
+  /** When their last tab on the site closed; null while they are about. */
+  leftAt: Date | null
 }
 
 /** A visitor as the admin's list shows them, with the chat they are in if any. */
@@ -46,6 +48,7 @@ function toVisitor(r: Row): ChatVisitor {
     cartUpdatedAt: (r.cart_updated_at as Date | null) ?? null,
     firstSeenAt: r.first_seen_at as Date,
     lastSeenAt: r.last_seen_at as Date,
+    leftAt: (r.left_at as Date | null) ?? null,
   }
 }
 
@@ -58,6 +61,11 @@ function toListed(r: Row): ListedVisitor {
     visitorEmail: (r.visitor_email as string | null) ?? null,
     unread: Number(r.unread_for_agents ?? 0),
   }
+}
+
+/** On the site now: checked in lately, and has not closed the site since. */
+export function visitorIsOnline(v: Pick<ChatVisitor, 'lastSeenAt' | 'leftAt'>): boolean {
+  return v.leftAt === null && Date.now() - v.lastSeenAt.getTime() < ONLINE_WINDOW_SECONDS * 1000
 }
 
 // --- the visitor's claim -----------------------------------------------------
@@ -126,7 +134,8 @@ export async function recordCheckIn(id: string, data: {
         "current_title" = ${data.title},
         "pages" = ${pages}::jsonb,
         "page_views" = "page_views" + ${views}::int4,
-        "last_seen_at" = now()
+        "last_seen_at" = now(),
+        "left_at" = NULL
       WHERE "id" = ${id}
     `
     return
@@ -140,9 +149,16 @@ export async function recordCheckIn(id: string, data: {
       "page_views" = "page_views" + ${views}::int4,
       "cart" = ${cart}::jsonb,
       "cart_updated_at" = CASE WHEN "cart" IS DISTINCT FROM ${cart}::jsonb THEN now() ELSE "cart_updated_at" END,
-      "last_seen_at" = now()
+      "last_seen_at" = now(),
+      "left_at" = NULL
     WHERE "id" = ${id}
   `
+}
+
+/** Their browser closed its last tab on the site (or went somewhere else). The
+ *  row stays, trail and basket included; they are just no longer here. */
+export async function markVisitorLeft(id: string): Promise<void> {
+  await prisma.$executeRaw`UPDATE "chat_visitors" SET "left_at" = now() WHERE "id" = ${id} AND "left_at" IS NULL`
 }
 
 /** A visitor who withdrew consent, or asked to be forgotten. Their chats stay
@@ -178,7 +194,8 @@ export async function getVisitor(id: string): Promise<ChatVisitor | null> {
   return rows[0] ? toVisitor(rows[0]) : null
 }
 
-/** Everybody who checked in within the last minute or so, newest first, each
+/** Everybody who checked in within the last minute or so and has not since
+ *  closed the site, newest first, each
  *  with the newest chat they are in (open ones before ended ones). */
 export async function listOnlineVisitors(limit = 200): Promise<ListedVisitor[]> {
   const rows = await prisma.$queryRaw<Row[]>`
@@ -193,6 +210,7 @@ export async function listOnlineVisitors(limit = 200): Promise<ListedVisitor[]> 
       LIMIT 1
     ) c ON true
     WHERE v."last_seen_at" > now() - make_interval(secs => ${ONLINE_WINDOW_SECONDS}::int4)
+      AND v."left_at" IS NULL
     ORDER BY v."last_seen_at" DESC
     LIMIT ${limit}
   `

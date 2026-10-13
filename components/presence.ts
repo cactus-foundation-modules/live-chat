@@ -18,8 +18,15 @@ import {
 // It checks in on arrival, on every page they move to, when their basket
 // changes, and every half minute while the tab is in front (which is what keeps
 // them on the "on the site now" list). A hidden tab checks in on its way back.
+// A closing tab says so on its way out, so they leave the list at once; any
+// other tab of ours still open hears about it and checks straight back in.
 
 type CartLine = { productId: string; quantity: number }
+
+/** Tabs of this site in one browser telling each other one of them closed. */
+const TABS_CHANNEL = 'cactus-chat-presence'
+/** Long enough for the closing tab's goodbye to land before the hello. */
+const STILL_HERE_DELAY_MS = 1_500
 
 /** The shop's basket from this browser, or undefined when there is no shop
  *  basket here at all. Read only; the shop owns it. */
@@ -105,12 +112,45 @@ export function usePresence({
     timer = setTimeout(tick, PRESENCE_EVERY_MS)
     const wake = () => { if (!document.hidden) void checkIn.current() }
     const cartChanged = () => { void checkIn.current() }
+
+    let tabs: BroadcastChannel | null = null
+    try { tabs = new BroadcastChannel(TABS_CHANNEL) } catch { /* one tab's word is good enough */ }
+    let stillHere: ReturnType<typeof setTimeout> | undefined
+    if (tabs) {
+      tabs.onmessage = () => {
+        clearTimeout(stillHere)
+        stillHere = setTimeout(() => { void checkIn.current() }, STILL_HERE_DELAY_MS)
+      }
+    }
+    // pagehide, not unload: it is the one that fires on phones and does not
+    // stop the browser keeping the page for the back button.
+    const leaving = () => {
+      const presence = handlers.current.presenceClaim()
+      if (!presence) return
+      try {
+        void fetch(`${API_BASE}/widget/leave`, {
+          method: 'POST',
+          headers: { [PRESENCE_HEADER]: presence },
+          keepalive: true,
+        }).catch(() => undefined)
+      } catch { /* the online window catches them up within a minute and a half */ }
+      tabs?.postMessage('left')
+    }
+    // Back from the back-button cache: here again.
+    const returned = (e: PageTransitionEvent) => { if (e.persisted) void checkIn.current() }
+
     document.addEventListener('visibilitychange', wake)
     window.addEventListener(SHOP_CART_EVENT, cartChanged)
+    window.addEventListener('pagehide', leaving)
+    window.addEventListener('pageshow', returned)
     return () => {
       clearTimeout(timer)
+      clearTimeout(stillHere)
+      tabs?.close()
       document.removeEventListener('visibilitychange', wake)
       window.removeEventListener(SHOP_CART_EVENT, cartChanged)
+      window.removeEventListener('pagehide', leaving)
+      window.removeEventListener('pageshow', returned)
       checkIn.current = async () => {}
     }
   }, [enabled])

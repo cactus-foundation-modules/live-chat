@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { errorResponse } from '@/lib/utils'
 import { requirePermission } from '@/modules/chat/lib/admin-auth'
 import { createConversation, deleteConversations } from '@/modules/chat/lib/db'
-import { getVisitor, getVisitorTokenHash, openChatWithVisitor } from '@/modules/chat/lib/visitors'
+import { getVisitor, getVisitorTokenHash, openChatWithVisitor, visitorIsOnline } from '@/modules/chat/lib/visitors'
 import { newConversationId } from '@/modules/chat/lib/visitor'
 import { messageBody, readMessageForm } from '@/modules/chat/lib/form'
 import { filesProblem } from '@/modules/chat/lib/text'
@@ -24,6 +24,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const visitor = await getVisitor(id)
   const tokenHash = visitor ? await getVisitorTokenHash(id) : null
   if (!visitor || !tokenHash) return errorResponse('That visitor has left and taken their trail with them.', 404)
+  if (!visitorIsOnline(visitor)) return errorResponse('They have just left the site, so there is nobody to say hello to.', 409)
 
   const form = await readMessageForm(request)
   if (!form) return errorResponse('That message could not be read.')

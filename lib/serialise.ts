@@ -1,8 +1,7 @@
 import { API_BASE } from './constants'
 import type { ChatConversation, ChatMessage } from './db'
-import type { ChatVisitor, ListedVisitor } from './visitors'
+import { visitorIsOnline, type ChatVisitor, type ListedVisitor } from './visitors'
 import { cartTotal, type CartLine, type TrailPage } from './trail'
-import { ONLINE_WINDOW_SECONDS } from './constants'
 import { attachmentSignature } from './visitor'
 
 // What a browser is handed. The visitor's copy carries signed attachment links
@@ -94,7 +93,7 @@ export function clientVisitor(v: ChatVisitor): ClientVisitor {
   const cart = v.cart && v.cart.length > 0 ? v.cart : null
   return {
     id: v.id,
-    online: Date.now() - v.lastSeenAt.getTime() < ONLINE_WINDOW_SECONDS * 1000,
+    online: visitorIsOnline(v),
     device: v.device,
     referrer: v.referrer,
     currentPath: v.currentPath,

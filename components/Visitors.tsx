@@ -148,6 +148,8 @@ export function VisitorDetails({ visitor }: { visitor: ClientVisitor }) {
   )
 }
 
+const footNote = { padding: '10px 14px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)' }
+
 /** One visitor from our side, with a box to say hello first. A visitor already
  *  chatting is handed to their chat instead. */
 export function VisitorPanel({ visitor: listed, canReply, onBack, onChat, compact }: {
@@ -196,8 +198,10 @@ export function VisitorPanel({ visitor: listed, canReply, onBack, onChat, compac
       </div>
       {canReply && !gone ? (
         chatting
-          ? <div className="cch-muted" style={{ padding: '10px 14px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>Already chatting with you - open the chat to reply.</div>
-          : <Composer onSend={sayHello} placeholder="Say hello first…" />
+          ? <div className="cch-muted" style={footNote}>Already chatting with you - open the chat to reply.</div>
+          : visitor.online
+            ? <Composer onSend={sayHello} placeholder="Say hello first…" />
+            : <div className="cch-muted" style={footNote}>They have left the site, so there is nobody to say hello to.</div>
       ) : null}
     </div>
   )
