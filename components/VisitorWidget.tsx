@@ -177,15 +177,17 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   }, [open])
 
   async function send(body: string, files: File[]): Promise<boolean> {
-    const first = !savedRef.current.claim
+    // Name and email ride along with every message, not just the first, so a
+    // visitor who fills them in halfway through is not ignored.
     const res = await fetch(`${API_BASE}/widget/messages`, messageRequest(
-      { body, name: first ? name : undefined, email: first ? cleanEmail(email) : undefined, page: window.location.pathname },
+      { body, name: name.trim() || undefined, email: cleanEmail(email) ?? undefined, page: window.location.pathname },
       files,
       headers(),
     ))
     if (!res.ok) throw new Error(await readError(res))
     const json = (await res.json()) as { claim: string | null; message: ClientMessage }
-    if (json.claim) update({ claim: json.claim, name: name || undefined, email: cleanEmail(email) ?? undefined, seen: 0 })
+    const details = { name: name.trim() || savedRef.current.name, email: cleanEmail(email) ?? savedRef.current.email }
+    update(json.claim ? { claim: json.claim, ...details, seen: 0 } : details)
     setMessages((prev) => [...prev, json.message])
     lastId.current = Math.max(lastId.current, json.message.id)
     setStatus('open')
@@ -251,7 +253,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
               </button>
             </header>
             <MessageList messages={messages} mine="visitor" intro={greeting}>
-              {!claim ? (
+              {status === 'open' && !ending ? (
                 <div className="cch-card">
                   <p className="cch-muted">{online ? 'Tell us who you are, if you like - it helps us reply by email if you have to dash off.' : 'Leave your email if you would like a reply - we cannot answer straight away.'}</p>
                   <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
@@ -312,7 +314,8 @@ function EndChat({ transcripts, email, onEnd, onCancel }: {
   onEnd: (withTranscript: boolean, to: string) => Promise<void>
   onCancel: () => void
 }) {
-  const [want, setWant] = useState(transcripts)
+  // Unticked until they ask: nobody should get an email they did not choose.
+  const [want, setWant] = useState(false)
   const [to, setTo] = useState(email)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')

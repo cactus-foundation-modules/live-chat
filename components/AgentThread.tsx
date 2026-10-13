@@ -120,12 +120,12 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
     return true
   }
 
-  async function setStatus(status: 'open' | 'closed') {
+  async function endChat() {
     setError('')
     const res = await fetch(`${API_BASE}/admin/conversations/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status: 'closed' }),
     })
     if (!res.ok) { setError(await readError(res)); return }
     await poll()
@@ -147,11 +147,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
       <div className="cch-head" style={compact ? undefined : { background: 'var(--color-surface)', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)' }}>
         {onBack ? <button type="button" aria-label="Back to chats" onClick={onBack}>←</button> : null}
         <h2 title={who}>{who}</h2>
-        {conversation && canReply ? (
-          conversation.status === 'open'
-            ? <button type="button" onClick={() => setStatus('closed')}>End chat</button>
-            : <button type="button" onClick={() => setStatus('open')}>Reopen</button>
-        ) : null}
+        {conversation && canReply && conversation.status === 'open' ? <button type="button" onClick={endChat}>End chat</button> : null}
         {canManage && !compact ? <button type="button" onClick={remove}>Delete</button> : null}
       </div>
       {conversation && !compact ? (
@@ -164,10 +160,9 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
       {error ? <div className="cch-error" role="alert" style={{ padding: '6px 14px' }}>{error}</div> : null}
       <MessageList messages={messages} mine="agent" />
       {canReply && conversation ? (
-        <Composer
-          onSend={send}
-          placeholder={conversation.status === 'closed' ? 'Replying reopens the chat…' : 'Reply…'}
-        />
+        conversation.status === 'closed'
+          ? <div className="cch-muted" style={{ padding: '10px 14px', borderTop: '1px solid var(--color-border)' }}>This chat has ended, so no more messages can be sent.</div>
+          : <Composer onSend={send} placeholder="Reply…" />
       ) : null}
     </div>
   )

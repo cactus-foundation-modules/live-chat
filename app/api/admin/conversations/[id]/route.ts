@@ -39,7 +39,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   )
 }
 
-// Close or reopen.
+// End a chat. There is no reopening: once a chat has ended, nobody can add to
+// it, so the visitor is never surprised by a message in a chat they closed.
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await requirePermission(PERM_REPLY)
   if ('response' in auth) return auth.response
@@ -48,17 +49,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!conversation) return errorResponse('That chat could not be found.', 404)
 
   const body = (await request.json().catch(() => null)) as { status?: unknown } | null
-  const status = body?.status === 'closed' ? 'closed' : body?.status === 'open' ? 'open' : null
-  if (!status) return errorResponse('Say whether the chat should be open or closed.')
-  if (status !== conversation.status) {
+  if (body?.status !== 'closed') return errorResponse('A chat can only be ended, not reopened.')
+  if (conversation.status !== 'closed') {
     const name = await agentName(auth.user.id)
-    await insertMessage({
-      conversationId: id,
-      sender: 'system',
-      body: status === 'closed' ? `${name ?? 'We'} ended the chat.` : `${name ?? 'We'} reopened the chat.`,
-    })
-    await setStatus(id, status)
-    if (status === 'closed') await markReadByAgents(id)
+    await insertMessage({ conversationId: id, sender: 'system', body: `${name ?? 'We'} ended the chat.` })
+    await setStatus(id, 'closed')
+    await markReadByAgents(id)
     after(async () => {
       await syncAgentAlert()
       await announce(id)

@@ -22,7 +22,12 @@ own media storage (Backblaze on most sites).
 - **Attachments.** Pictures, PDFs and office documents up to 4MB each, kept
   privately in your media storage and never shown in the media library.
 - **End chat and email a transcript.** Visitors can end the chat whenever they
-  like and have a copy emailed to them, attachments linked.
+  like and, if they tick the box, have a copy emailed to them, attachments
+  linked. Once a chat has ended, from either side, it is ended: nobody can add
+  to it, and the visitor starts a fresh one if they have more to say.
+- **Name and email whenever suits.** The optional name and email boxes stay put
+  for the whole chat, so a visitor who decides halfway through that they would
+  like a reply by email can still leave one.
 - **Answer from anywhere.** From *Inbox > Live chat* in the admin, from the
   bubble on the site itself while you are signed in, or from the Unified Inbox
   if you have it installed - new chats land there the moment they are sent.
@@ -42,7 +47,7 @@ and how long chats are kept.
 | Key | Lets somebody |
 | --- | --- |
 | `chat.view` | read chats, and see the admin bubble on the site |
-| `chat.reply` | reply to, end and reopen chats |
+| `chat.reply` | reply to and end chats |
 | `chat.manage` | change settings and delete chats |
 
 ## How it works (for developers)
