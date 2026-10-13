@@ -50,8 +50,13 @@ CREATE INDEX IF NOT EXISTS "chat_conversations_email_idx"
 CREATE INDEX IF NOT EXISTS "chat_conversations_ip_idx"
   ON "chat_conversations" ("ip_hash", "created_at");
 
+-- A plain BIGINT on a named sequence rather than BIGSERIAL: the ids only ever
+-- go up, which is what lets a browser ask for "anything after the last one I
+-- have", and the backup dumps the sequence's position alongside the rows.
+CREATE SEQUENCE IF NOT EXISTS "chat_messages_id_seq";
+
 CREATE TABLE IF NOT EXISTS "chat_messages" (
-  "id" BIGSERIAL PRIMARY KEY,
+  "id" BIGINT PRIMARY KEY DEFAULT nextval('"chat_messages_id_seq"'),
   "conversation_id" TEXT NOT NULL REFERENCES "chat_conversations"("id") ON DELETE CASCADE,
   -- visitor | agent | system
   "sender" TEXT NOT NULL,
@@ -60,6 +65,8 @@ CREATE TABLE IF NOT EXISTS "chat_messages" (
   "body" TEXT NOT NULL DEFAULT '',
   "created_at" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER SEQUENCE "chat_messages_id_seq" OWNED BY "chat_messages"."id";
 
 CREATE INDEX IF NOT EXISTS "chat_messages_conversation_idx"
   ON "chat_messages" ("conversation_id", "id");
