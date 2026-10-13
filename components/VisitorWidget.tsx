@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_BASE, CHAT_OPEN_EVENT, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
 import { cleanEmail } from '@/modules/chat/lib/text'
+import { publishUnread } from '@/modules/chat/lib/unread'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
 import { ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
 
@@ -43,9 +44,17 @@ type Props = {
   label: string
   greeting: string
   transcripts: boolean
+  hideOnMobile: boolean
+  /** As of the page render; re-read from the server whenever the window opens. */
+  online: boolean
+  awayLabel: string
+  awayMessage: string
 }
 
-export function VisitorWidget({ position, label, greeting, transcripts }: Props) {
+export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGreeting, transcripts, hideOnMobile, online: initialOnline, awayLabel, awayMessage }: Props) {
+  const [online, setOnline] = useState(initialOnline)
+  const label = online ? onlineLabel : awayLabel
+  const greeting = online ? onlineGreeting : awayMessage
   const [saved, setSaved] = useState<Saved>({})
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ClientMessage[]>([])
@@ -98,7 +107,8 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
       const res = await fetch(`${API_BASE}/widget/messages?after=${lastId.current}${seen ? '&seen=1' : ''}`, { headers: headers(), cache: 'no-store' })
       if (res.status === 404) { update(null); setMessages([]); lastId.current = 0; return }
       if (!res.ok) return
-      const json = (await res.json()) as { status: 'open' | 'closed'; messages: ClientMessage[] }
+      const json = (await res.json()) as { online?: boolean; status: 'open' | 'closed'; messages: ClientMessage[] }
+      if (typeof json.online === 'boolean') setOnline(json.online)
       setStatus(json.status)
       if (json.messages.length === 0) return
       lastId.current = json.messages[json.messages.length - 1]?.id ?? lastId.current
@@ -152,6 +162,19 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
   }, [open, update])
 
   const unread = claim ? messages.filter((m) => m.sender === 'agent' && m.id > (saved.seen ?? 0)).length : 0
+  useEffect(() => { publishUnread(unread) }, [unread])
+
+  // A page can be served from a cache; whether anyone is in is checked fresh
+  // each time the window opens, for visitors who have not started a chat yet.
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    fetch(`${API_BASE}/widget/status`, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { online: boolean } | null) => { if (live && json) setOnline(json.online) })
+      .catch(() => { /* the page's own answer stands */ })
+    return () => { live = false }
+  }, [open])
 
   async function send(body: string, files: File[]): Promise<boolean> {
     const first = !savedRef.current.claim
@@ -217,7 +240,7 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
   return (
     <div className="cch-root">
       <ChatStyles />
-      <div className={`cch-dock ${position}`}>
+      <div className={`cch-dock ${position}${hideOnMobile ? ' hide-mobile' : ''}`}>
         {open ? (
           <section className="cch-panel" aria-label="Live chat">
             <header className="cch-head">
@@ -230,7 +253,7 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
             <MessageList messages={messages} mine="visitor" intro={greeting}>
               {!claim ? (
                 <div className="cch-card">
-                  <p className="cch-muted">Tell us who you are, if you like - it helps us reply by email if you have to dash off.</p>
+                  <p className="cch-muted">{online ? 'Tell us who you are, if you like - it helps us reply by email if you have to dash off.' : 'Leave your email if you would like a reply - we cannot answer straight away.'}</p>
                   <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
                   <input className="cch-input" type="email" placeholder="Your email (optional)" aria-label="Your email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} />
                 </div>

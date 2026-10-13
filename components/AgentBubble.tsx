@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CHAT_OPEN_EVENT } from '@/modules/chat/lib/constants'
+import { publishUnread } from '@/modules/chat/lib/unread'
 import type { ClientConversation } from '@/modules/chat/lib/serialise'
 import { ChatStyles } from './ui'
 import { AgentThread, ConversationList, useChatList } from './AgentThread'
+import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
 
 // What a colleague signed in to the admin sees on the public site instead of
 // the visitor's widget: the waiting chats, answerable without leaving the page.
@@ -13,12 +15,15 @@ import { AgentThread, ConversationList, useChatList } from './AgentThread'
 
 type Peek = { id: string; who: string; text: string }
 
-export function AgentBubble({ position, canReply }: { position: 'left' | 'right'; canReply: boolean }) {
+export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'left' | 'right'; canReply: boolean; hideOnMobile: boolean }) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState<string | null>(null)
   const [peeks, setPeeks] = useState<Peek[]>([])
   const { conversations, unread, refresh } = useChatList('open', open ? 4_000 : 10_000)
   const lastSeen = useRef<Map<string, string> | null>(null)
+  const availability = useAvailability()
+
+  useEffect(() => { publishUnread(unread) }, [unread])
 
   useEffect(() => {
     const show = () => setOpen(true)
@@ -47,7 +52,7 @@ export function AgentBubble({ position, canReply }: { position: 'left' | 'right'
   return (
     <div className="cch-root">
       <ChatStyles />
-      <div className={`cch-dock ${position}`}>
+      <div className={`cch-dock ${position}${hideOnMobile ? ' hide-mobile' : ''}`}>
         {open ? (
           <section className="cch-panel" aria-label="Live chats">
             {active ? (
@@ -56,6 +61,7 @@ export function AgentBubble({ position, canReply }: { position: 'left' | 'right'
               <>
                 <header className="cch-head">
                   <h2>Live chats{unread > 0 ? ` (${unread} waiting)` : ''}</h2>
+                  {canReply ? <AvailabilitySwitch onDark online={availability.online} busy={availability.busy} onChange={availability.change} /> : null}
                   <button type="button" aria-label="Minimise" onClick={() => setOpen(false)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
                   </button>
@@ -86,7 +92,7 @@ export function AgentBubble({ position, canReply }: { position: 'left' | 'right'
             ) : null}
             <button type="button" className="cch-launcher" onClick={() => openChat(null)} aria-label={unread > 0 ? `Live chats (${unread} waiting)` : 'Live chats'}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-              <span>Chats</span>
+              <span>{availability.online === false ? 'Chats (offline)' : 'Chats'}</span>
               {unread > 0 ? <span className="cch-badge">{unread}</span> : null}
             </button>
           </>

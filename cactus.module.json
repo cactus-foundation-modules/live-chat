@@ -1,6 +1,6 @@
 {
   "name": "chat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tablePrefix": "chat_",
   "description": "Live Chat - a small, quick chat bubble for your site, with attachments, browser notifications for visitors, emailed transcripts and replies from the admin, the site itself or the Unified Inbox.",
   "requiresCoreVersion": "0.5.1779",
@@ -36,6 +36,13 @@
       "serverOnly": true,
       "import": "./lib/conversation-provider",
       "component": "chatConversationProvider"
+    },
+    {
+      "point": "core.mobile-bar-items",
+      "id": "chat-open",
+      "label": "Live chat: message us",
+      "import": "./components/ChatMobileBarItem",
+      "component": "ChatMobileBarItem"
     },
     {
       "point": "core.media-private-storage",

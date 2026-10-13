@@ -35,8 +35,10 @@ export async function GET(request: NextRequest) {
   if (request.nextUrl.searchParams.get('seen') === '1' && conversation.unreadForVisitor > 0) {
     await markReadByVisitor(conversation.id)
   }
+  const { online } = await getChatSettings()
   return NextResponse.json(
     {
+      online,
       status: conversation.status,
       unread: conversation.unreadForVisitor,
       messages: messages.map((m) => clientMessage(m, true)),

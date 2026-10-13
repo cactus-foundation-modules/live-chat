@@ -82,6 +82,26 @@ export function ChatSettingsTab() {
       </div>
 
       <label className="settings-check">
+        <input type="checkbox" checked={settings.hideBubbleOnMobile} onChange={(e) => set('hideBubbleOnMobile', e.target.checked)} />
+        Hide the floating bubble on phones
+      </label>
+      <p className="field-hint">
+        For sites with a Mobile Bar: add its <strong>Live chat: message us</strong> cell and the chat opens from there instead.
+        The bubble stays on larger screens.
+      </p>
+
+      <div className="field">
+        <label htmlFor="chat-away-label">Bubble label when offline</label>
+        <input id="chat-away-label" maxLength={40} value={settings.awayLabel} onChange={(e) => set('awayLabel', e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label htmlFor="chat-away">Message when offline</label>
+        <textarea id="chat-away" rows={3} maxLength={300} value={settings.awayMessage} onChange={(e) => set('awayMessage', e.target.value)} />
+        <p className="field-hint">Shown instead of the greeting while you are set to offline. The Online/Offline switch lives on the Inbox tab and on the bubble you see when signed in.</p>
+      </div>
+
+      <label className="settings-check">
         <input type="checkbox" checked={settings.transcripts} onChange={(e) => set('transcripts', e.target.checked)} />
         Let visitors email themselves a copy of the chat when they end it
       </label>

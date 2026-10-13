@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChatStyles } from './ui'
 import { AgentThread, ConversationList, useChatList } from './AgentThread'
+import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
 
 // The Live chat tab of the admin Inbox: chats down the side, the chosen one
 // beside them. Everything refreshes on its own every few seconds.
@@ -11,6 +12,7 @@ export function AdminInbox({ canReply, canManage, initialId }: { canReply: boole
   const [status, setStatus] = useState<'open' | 'closed'>('open')
   const [active, setActive] = useState<string | null>(initialId)
   const { conversations, unread, loaded, refresh } = useChatList(status, 5_000)
+  const availability = useAvailability()
 
   return (
     <div className="cch-root" style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', height: 'calc(100vh - 220px)', minHeight: 420, background: 'var(--color-surface)' }}>
@@ -23,6 +25,7 @@ export function AdminInbox({ canReply, canManage, initialId }: { canReply: boole
           <button type="button" role="tab" aria-selected={status === 'closed'} className={`cch-btn${status === 'closed' ? ' primary' : ''}`} onClick={() => setStatus('closed')}>
             Ended
           </button>
+          {canReply ? <span style={{ marginLeft: 'auto' }}><AvailabilitySwitch online={availability.online} busy={availability.busy} onChange={availability.change} /></span> : null}
         </div>
         {loaded ? (
           <ConversationList

@@ -17,7 +17,7 @@ async function ChatRsc() {
   const user = await getSessionFromCookie().catch(() => null)
   if (user && await hasPermission(user, PERM_VIEW).catch(() => false)) {
     const canReply = await hasPermission(user, PERM_REPLY).catch(() => false)
-    return <AgentBubble position={settings.position} canReply={canReply} />
+    return <AgentBubble position={settings.position} canReply={canReply} hideOnMobile={settings.hideBubbleOnMobile} />
   }
   return (
     <VisitorWidget
@@ -25,6 +25,10 @@ async function ChatRsc() {
       label={settings.bubbleLabel || 'Chat with us'}
       greeting={settings.greeting}
       transcripts={settings.transcripts}
+      hideOnMobile={settings.hideBubbleOnMobile}
+      online={settings.online}
+      awayLabel={settings.awayLabel}
+      awayMessage={settings.awayMessage}
     />
   )
 }

@@ -18,6 +18,9 @@ const Body = z.object({
   greeting: z.string().trim().max(300),
   transcripts: z.boolean(),
   retentionMonths: z.number().int().min(1).max(120),
+  hideBubbleOnMobile: z.boolean(),
+  awayLabel: z.string().trim().min(1).max(40),
+  awayMessage: z.string().trim().min(1).max(300),
 })
 
 export async function PUT(request: NextRequest) {

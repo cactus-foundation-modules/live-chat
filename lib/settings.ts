@@ -7,6 +7,11 @@ export type ChatSettings = {
   greeting: string
   transcripts: boolean
   retentionMonths: number
+  hideBubbleOnMobile: boolean
+  awayLabel: string
+  awayMessage: string
+  /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
+  online: boolean
 }
 
 export const DEFAULT_SETTINGS: ChatSettings = {
@@ -16,6 +21,10 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   greeting: 'Hello! Ask us anything and we will get back to you as soon as we can.',
   transcripts: true,
   retentionMonths: 12,
+  hideBubbleOnMobile: false,
+  awayLabel: 'Leave a message',
+  awayMessage: 'We are away at the moment. Leave a message, and your email if you would like a reply, and we will get back to you when we are next in.',
+  online: true,
 }
 
 export async function getChatSettings(): Promise<ChatSettings> {
@@ -31,13 +40,17 @@ export async function getChatSettings(): Promise<ChatSettings> {
     greeting: typeof r.greeting === 'string' ? r.greeting : DEFAULT_SETTINGS.greeting,
     transcripts: r.transcripts !== false,
     retentionMonths: Number(r.retention_months ?? DEFAULT_SETTINGS.retentionMonths) || DEFAULT_SETTINGS.retentionMonths,
+    hideBubbleOnMobile: r.hide_bubble_on_mobile === true,
+    awayLabel: typeof r.away_label === 'string' ? r.away_label : DEFAULT_SETTINGS.awayLabel,
+    awayMessage: typeof r.away_message === 'string' ? r.away_message : DEFAULT_SETTINGS.awayMessage,
+    online: r.agent_online !== false,
   }
 }
 
-export async function saveChatSettings(next: ChatSettings): Promise<void> {
+export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -45,6 +58,18 @@ export async function saveChatSettings(next: ChatSettings): Promise<void> {
       "greeting" = EXCLUDED."greeting",
       "transcripts" = EXCLUDED."transcripts",
       "retention_months" = EXCLUDED."retention_months",
+      "hide_bubble_on_mobile" = EXCLUDED."hide_bubble_on_mobile",
+      "away_label" = EXCLUDED."away_label",
+      "away_message" = EXCLUDED."away_message",
       "updated_at" = now()
+  `
+}
+
+/** The online/offline switch. Its own write, so saving the settings form can
+ *  never put somebody back online by accident. */
+export async function setChatOnline(online: boolean): Promise<void> {
+  await prisma.$executeRaw`
+    INSERT INTO "chat_settings" ("id", "agent_online", "updated_at") VALUES ('singleton', ${online}, now())
+    ON CONFLICT ("id") DO UPDATE SET "agent_online" = EXCLUDED."agent_online", "updated_at" = now()
   `
 }
