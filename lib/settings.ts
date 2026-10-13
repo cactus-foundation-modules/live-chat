@@ -10,6 +10,9 @@ export type ChatSettings = {
   hideBubbleOnMobile: boolean
   awayLabel: string
   awayMessage: string
+  /** List visitors who agreed to the Live chat cookie category, with where they
+   *  have been and what is in their basket, so we can say hello first. */
+  trackVisitors: boolean
   /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
   online: boolean
 }
@@ -24,6 +27,7 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   hideBubbleOnMobile: false,
   awayLabel: 'Leave a message',
   awayMessage: 'We are away at the moment. Leave a message, and your email if you would like a reply, and we will get back to you when we are next in.',
+  trackVisitors: true,
   online: true,
 }
 
@@ -43,14 +47,15 @@ export async function getChatSettings(): Promise<ChatSettings> {
     hideBubbleOnMobile: r.hide_bubble_on_mobile === true,
     awayLabel: typeof r.away_label === 'string' ? r.away_label : DEFAULT_SETTINGS.awayLabel,
     awayMessage: typeof r.away_message === 'string' ? r.away_message : DEFAULT_SETTINGS.awayMessage,
+    trackVisitors: r.track_visitors !== false,
     online: r.agent_online !== false,
   }
 }
 
 export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -61,6 +66,7 @@ export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Prom
       "hide_bubble_on_mobile" = EXCLUDED."hide_bubble_on_mobile",
       "away_label" = EXCLUDED."away_label",
       "away_message" = EXCLUDED."away_message",
+      "track_visitors" = EXCLUDED."track_visitors",
       "updated_at" = now()
   `
 }

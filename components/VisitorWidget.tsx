@@ -1,16 +1,27 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { API_BASE, CHAT_OPEN_EVENT, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
+import { CONSENT_CHANGE_EVENT } from '@/lib/consent/gate'
+import type { ConsentBannerConfig, ConsentDecision } from '@/lib/consent/types'
+import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
 import { cleanEmail } from '@/modules/chat/lib/text'
 import { publishUnread } from '@/modules/chat/lib/unread'
+import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent } from '@/modules/chat/lib/consent-client'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
 import { BodyPortal, ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
+import { forgetPresence, usePresence, type PresenceReply } from './presence'
 
 // The chat as a visitor sees it. Nothing is stored and nothing is fetched until
 // they send their first message; from then on their browser holds the claim to
 // that one chat in localStorage and asks for anything newer every few seconds
 // (quicker while the window is open, slower while it is not).
+//
+// Where the site's cookie banner carries the Live chat category, none of that
+// happens until the visitor says yes to it: the window asks first, and a visitor
+// who said no is shown the cookie settings when they try to send something.
+// With a yes, and the owner's visitor list switched on, the browser also checks
+// in as they move around, which is how we see where they are and what is in
+// their basket, and how a chat we start with them finds its way here.
 
 type Saved = {
   claim?: string
@@ -22,6 +33,8 @@ type Saved = {
   asked?: boolean
   /** Whether a push subscription is in place, so the tab does not also pop one. */
   pushed?: boolean
+  /** The claim on this browser's visitor row, once it has checked in. */
+  presence?: string
 }
 
 function load(): Saved {
@@ -49,9 +62,14 @@ type Props = {
   online: boolean
   awayLabel: string
   awayMessage: string
+  /** The site's cookie banner, when it carries the Live chat category; null when
+   *  it does not, and nobody can be asked. */
+  consent: ConsentBannerConfig | null
+  /** The owner's visitor list is switched on. */
+  track: boolean
 }
 
-export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGreeting, transcripts, hideOnMobile, online: initialOnline, awayLabel, awayMessage }: Props) {
+export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGreeting, transcripts, hideOnMobile, online: initialOnline, awayLabel, awayMessage, consent, track }: Props) {
   const [online, setOnline] = useState(initialOnline)
   const label = online ? onlineLabel : awayLabel
   const greeting = online ? onlineGreeting : awayMessage
@@ -67,8 +85,14 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const [askNotify, setAskNotify] = useState(false)
   const [ending, setEnding] = useState(false)
   const [ended, setEnded] = useState<string | null>(null)
+  const [chatConsent, setChatConsent] = useState<ChatConsent | null>(null)
+  const [askConsent, setAskConsent] = useState(false)
+  const [granting, setGranting] = useState(false)
+  const reopenOnGrant = useRef(false)
   const lastId = useRef(0)
   const savedRef = useRef<Saved>({})
+  // Nothing is stored, fetched or checked in until this is true.
+  const allowed = consent === null || chatConsent?.granted === true
 
   const update = useCallback((patch: Partial<Saved> | null) => {
     const next = patch === null ? {} : { ...savedRef.current, ...patch }
@@ -100,8 +124,75 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     }
   }, [])
 
-  const claim = saved.claim
+  // The visitor's answer, as it stands now and every time it changes - from the
+  // banner, the privacy page, another tab's banner on its next load, or here.
+  useEffect(() => {
+    if (!consent) return
+    const apply = (next: ChatConsent) => {
+      setChatConsent(next)
+      if (next.granted) {
+        setAskConsent(false)
+        if (reopenOnGrant.current) { reopenOnGrant.current = false; setOpen(true) }
+        return
+      }
+      // A no (or a yes taken back) means this browser keeps nothing for the chat:
+      // the trail goes from our side, and the claims from theirs.
+      if (next.decided) {
+        const presence = savedRef.current.presence
+        if (presence) void forgetPresence(presence)
+        if (Object.keys(savedRef.current).length > 0) {
+          savedRef.current = {}
+          try { localStorage.removeItem(VISITOR_STORAGE_KEY) } catch { /* nothing to remove */ }
+          setSaved({})
+          setMessages([])
+          setStatus('open')
+          lastId.current = 0
+        }
+      }
+    }
+    // Read on mount: the cookie is not available during render.
+    apply(readChatConsent(consent))
+    const changed = (e: Event) => {
+      const decision = (e as CustomEvent<ConsentDecision>).detail ?? {}
+      apply({ granted: decision[CONSENT_CATEGORY] === true, decided: true })
+    }
+    window.addEventListener(CONSENT_CHANGE_EVENT, changed)
+    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, changed)
+  }, [consent])
+
+  const claim = allowed ? saved.claim : undefined
   const headers = useCallback((): Record<string, string> => (savedRef.current.claim ? { [VISITOR_HEADER]: savedRef.current.claim } : {}), [])
+
+  const statusRef = useRef<'open' | 'closed'>('open')
+  useEffect(() => { statusRef.current = status }, [status])
+
+  // A chat we started is claimed with the secret this browser already holds for
+  // its visitor row. Picked up when this browser has no chat on the go, or only
+  // one that has ended.
+  const onPresence = useCallback((reply: PresenceReply) => {
+    if (reply.claim) update({ presence: reply.claim })
+    if (typeof reply.online === 'boolean') setOnline(reply.online)
+    const presence = savedRef.current.presence
+    if (!reply.chat || !presence) return
+    const secret = presence.slice(presence.indexOf('.') + 1)
+    const current = savedRef.current.claim
+    if (current?.startsWith(`${reply.chat}.`)) return
+    if (current && statusRef.current === 'open') return
+    lastId.current = 0
+    setMessages([])
+    setEnded(null)
+    setStatus('open')
+    update({ claim: `${reply.chat}.${secret}`, seen: 0, pushed: false })
+  }, [update])
+  usePresence({
+    enabled: track && consent !== null && chatConsent?.granted === true,
+    presenceClaim: () => savedRef.current.presence,
+    chatClaim: () => savedRef.current.claim,
+    onReply: onPresence,
+    // The site stopped listing visitors, or the server does not see the yes:
+    // the claim on a row that is gone is no use to anybody.
+    onRefused: () => { if (savedRef.current.presence) update({ presence: undefined }) },
+  })
 
   const poll = useCallback(async (seen: boolean) => {
     if (!savedRef.current.claim) return
@@ -179,6 +270,12 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   }, [open])
 
   async function send(body: string, files: File[]): Promise<boolean> {
+    if (!allowed) {
+      // Kept in the box (false), so nothing typed is lost while they decide.
+      setAskConsent(true)
+      if (chatConsent?.decided) showCookieSettings()
+      return false
+    }
     // Name and email ride along with every message, not just the first, so a
     // visitor who fills them in halfway through is not ignored.
     const res = await fetch(`${API_BASE}/widget/messages`, messageRequest(
@@ -262,8 +359,22 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setStatus('closed')
   }
 
+  async function allowChat() {
+    if (!consent) return
+    setGranting(true)
+    try { await grantChatConsent(consent) } finally { setGranting(false) }
+  }
+
+  // The banner's switches, with the chat tucked away so it is not sat on top of
+  // them; it opens again by itself if they switch Live chat on.
+  function showCookieSettings() {
+    if (!openCookieSettings()) return
+    reopenOnGrant.current = true
+    setOpen(false)
+  }
+
   function startAgain() {
-    update({ asked: savedRef.current.asked, name: savedRef.current.name, email: savedRef.current.email, claim: undefined, seen: 0, pushed: false })
+    update({ asked: savedRef.current.asked, name: savedRef.current.name, email: savedRef.current.email, presence: savedRef.current.presence, claim: undefined, seen: 0, pushed: false })
     setMessages([])
     setEnded(null)
     setStatus('open')
@@ -285,7 +396,17 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
               </button>
             </header>
             <MessageList messages={messages} mine="visitor" intro={greeting}>
-              {status === 'open' && !ending && !(saved.name && saved.email) ? (
+              {!allowed && chatConsent ? (
+                <ConsentCard
+                  declined={chatConsent.decided}
+                  emphasised={askConsent}
+                  track={track}
+                  busy={granting}
+                  onAllow={allowChat}
+                  onSettings={showCookieSettings}
+                />
+              ) : null}
+              {allowed && status === 'open' && !ending && !(saved.name && saved.email) ? (
                 <div className="cch-card">
                   <p className="cch-muted">{online ? 'Tell us who you are, if you like - it helps us reply by email if you have to dash off.' : 'Leave your email if you would like a reply - we cannot answer straight away.'}</p>
                   {saved.name ? null : <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" value={name} maxLength={80} onChange={(e) => { setName(e.target.value); setDetailsError('') }} />}
@@ -383,6 +504,34 @@ function EndChat({ transcripts, email, onEnd, onCancel }: {
       <div className="cch-row">
         <button type="button" className="cch-btn primary" disabled={busy} onClick={go}>{busy ? 'Ending…' : 'End chat'}</button>
         <button type="button" className="cch-btn" disabled={busy} onClick={onCancel}>Keep chatting</button>
+      </div>
+    </div>
+  )
+}
+
+function ConsentCard({ declined, emphasised, track, busy, onAllow, onSettings }: {
+  declined: boolean
+  emphasised: boolean
+  track: boolean
+  busy: boolean
+  onAllow: () => void
+  onSettings: () => void
+}) {
+  const what = track
+    ? 'Live chat keeps a small note in your browser so it can find this conversation again, and lets us see which page you are on and what is in your basket, so we can actually help.'
+    : 'Live chat keeps a small note in your browser so it can find this conversation again.'
+  return (
+    <div className="cch-card" role={emphasised ? 'alert' : undefined} style={emphasised ? { borderColor: 'var(--color-primary)' } : undefined}>
+      <p><strong>{declined ? 'Live chat is switched off in your cookie settings' : 'Before we chat'}</strong></p>
+      <p>
+        {what}{' '}
+        {declined
+          ? 'You said no to that, which is entirely fair, but it does mean we cannot chat until you switch it on.'
+          : 'We need your OK for that first.'}
+      </p>
+      <div className="cch-row">
+        <button type="button" className="cch-btn primary" disabled={busy} onClick={onAllow}>{busy ? 'One moment…' : 'Allow live chat'}</button>
+        <button type="button" className="cch-btn" onClick={onSettings}>Cookie settings</button>
       </div>
     </div>
   )

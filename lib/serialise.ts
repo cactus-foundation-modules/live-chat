@@ -1,5 +1,8 @@
 import { API_BASE } from './constants'
 import type { ChatConversation, ChatMessage } from './db'
+import type { ChatVisitor, ListedVisitor } from './visitors'
+import { cartTotal, type CartLine, type TrailPage } from './trail'
+import { ONLINE_WINDOW_SECONDS } from './constants'
 import { attachmentSignature } from './visitor'
 
 // What a browser is handed. The visitor's copy carries signed attachment links
@@ -25,6 +28,34 @@ export type ClientConversation = {
   lastMessageAt: string
   preview: string | null
   notifications: boolean
+  visitorId: string | null
+  startedBy: 'visitor' | 'agent'
+}
+
+/** A visitor as the admin sees them: where they are, where they have been and
+ *  what is in their basket. */
+export type ClientVisitor = {
+  id: string
+  online: boolean
+  device: string | null
+  referrer: string | null
+  currentPath: string | null
+  currentTitle: string | null
+  pages: TrailPage[]
+  pageViews: number
+  cart: CartLine[] | null
+  cartTotal: string | null
+  cartUpdatedAt: string | null
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+export type ClientListedVisitor = ClientVisitor & {
+  conversationId: string | null
+  conversationStatus: 'open' | 'closed' | null
+  name: string | null
+  email: string | null
+  unread: number
 }
 
 export function clientMessage(m: ChatMessage, forVisitor: boolean): ClientMessage {
@@ -54,5 +85,37 @@ export function clientConversation(c: ChatConversation): ClientConversation {
     lastMessageAt: c.lastMessageAt.toISOString(),
     preview: c.lastMessagePreview,
     notifications: c.hasPush,
+    visitorId: c.visitorId,
+    startedBy: c.startedBy,
+  }
+}
+
+export function clientVisitor(v: ChatVisitor): ClientVisitor {
+  const cart = v.cart && v.cart.length > 0 ? v.cart : null
+  return {
+    id: v.id,
+    online: Date.now() - v.lastSeenAt.getTime() < ONLINE_WINDOW_SECONDS * 1000,
+    device: v.device,
+    referrer: v.referrer,
+    currentPath: v.currentPath,
+    currentTitle: v.currentTitle,
+    pages: v.pages,
+    pageViews: v.pageViews,
+    cart,
+    cartTotal: cart ? cartTotal(cart) : null,
+    cartUpdatedAt: v.cartUpdatedAt?.toISOString() ?? null,
+    firstSeenAt: v.firstSeenAt.toISOString(),
+    lastSeenAt: v.lastSeenAt.toISOString(),
+  }
+}
+
+export function clientListedVisitor(v: ListedVisitor): ClientListedVisitor {
+  return {
+    ...clientVisitor(v),
+    conversationId: v.conversationId,
+    conversationStatus: v.conversationStatus,
+    name: v.visitorName,
+    email: v.visitorEmail,
+    unread: v.unread,
   }
 }

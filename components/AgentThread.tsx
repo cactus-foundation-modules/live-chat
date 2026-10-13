@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_BASE } from '@/modules/chat/lib/constants'
-import type { ClientConversation, ClientMessage } from '@/modules/chat/lib/serialise'
+import type { ClientConversation, ClientMessage, ClientVisitor } from '@/modules/chat/lib/serialise'
 import { Composer, MessageList, messageRequest, readError } from './ui'
+import { VisitorDetails } from './Visitors'
 
 // One chat from our side, used by both the inbox tab and the bubble on the
 // site. It asks for anything new every few seconds while it is on screen, and
@@ -74,6 +75,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
   compact?: boolean
 }) {
   const [conversation, setConversation] = useState<ClientConversation | null>(null)
+  const [visitor, setVisitor] = useState<ClientVisitor | null>(null)
   const [messages, setMessages] = useState<ClientMessage[]>([])
   const [error, setError] = useState('')
   const lastId = useRef(0)
@@ -83,8 +85,9 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
       const res = await fetch(`${API_BASE}/admin/conversations/${id}?after=${lastId.current}${document.hidden ? '' : '&read=1'}`, { cache: 'no-store' })
       if (res.status === 404) { setError('This chat has been deleted.'); return }
       if (!res.ok) return
-      const json = (await res.json()) as { conversation: ClientConversation; messages: ClientMessage[] }
+      const json = (await res.json()) as { conversation: ClientConversation; messages: ClientMessage[]; visitor?: ClientVisitor | null }
       setConversation(json.conversation)
+      setVisitor(json.visitor ?? null)
       if (json.messages.length > 0) {
         lastId.current = json.messages[json.messages.length - 1]?.id ?? lastId.current
         setMessages((prev) => {
@@ -100,6 +103,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a different chat starts from nothing
     setMessages([])
     setConversation(null)
+    setVisitor(null)
     setError('')
     let timer: ReturnType<typeof setTimeout>
     const tick = async () => {
@@ -156,6 +160,15 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
           {conversation.pageUrl ? <>started on <a href={conversation.pageUrl} target="_blank" rel="noopener noreferrer">{conversation.pageUrl}</a> · </> : null}
           {conversation.notifications ? 'notifications on' : 'notifications off'}
         </div>
+      ) : null}
+      {visitor ? (
+        <details className="cch-about">
+          <summary>
+            {visitor.online ? 'On ' : 'Was on '}{visitor.currentTitle || visitor.currentPath || 'the site'}
+            {visitor.cart ? ` · basket of ${visitor.cart.reduce((n, l) => n + l.quantity, 0)}` : ''}
+          </summary>
+          <VisitorDetails visitor={visitor} />
+        </details>
       ) : null}
       {error ? <div className="cch-error" role="alert" style={{ padding: '6px 14px' }}>{error}</div> : null}
       <MessageList messages={messages} mine="agent" />

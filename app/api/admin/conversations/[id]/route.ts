@@ -10,7 +10,8 @@ import {
   storedFilesFor,
 } from '@/modules/chat/lib/db'
 import { requirePermission } from '@/modules/chat/lib/admin-auth'
-import { clientConversation, clientMessage } from '@/modules/chat/lib/serialise'
+import { clientConversation, clientMessage, clientVisitor } from '@/modules/chat/lib/serialise'
+import { getVisitor } from '@/modules/chat/lib/visitors'
 import { deleteStoredFiles } from '@/modules/chat/lib/attachments'
 import { agentName } from '@/modules/chat/lib/agent'
 import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
@@ -28,13 +29,21 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (!conversation) return errorResponse('That chat could not be found.', 404)
 
   const afterId = Math.max(0, Number(request.nextUrl.searchParams.get('after') ?? 0) || 0)
-  const messages = await listMessages(id, afterId)
+  const [messages, visitor] = await Promise.all([
+    listMessages(id, afterId),
+    // Where they are and what is in their basket, when they agreed to be listed.
+    conversation.visitorId ? getVisitor(conversation.visitorId).catch(() => null) : Promise.resolve(null),
+  ])
   if (request.nextUrl.searchParams.get('read') === '1' && conversation.unreadForAgents > 0) {
     await markReadByAgents(id)
     after(syncAgentAlert)
   }
   return NextResponse.json(
-    { conversation: clientConversation(conversation), messages: messages.map((m) => clientMessage(m, false)) },
+    {
+      conversation: clientConversation(conversation),
+      messages: messages.map((m) => clientMessage(m, false)),
+      visitor: visitor ? clientVisitor(visitor) : null,
+    },
     { headers: { 'Cache-Control': 'no-store' } },
   )
 }

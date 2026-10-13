@@ -18,6 +18,9 @@ import { cleanEmail, cleanName, filesProblem } from '@/modules/chat/lib/text'
 import { storeFiles, StorageUnavailableError } from '@/modules/chat/lib/attachments'
 import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
 import { clientMessage } from '@/modules/chat/lib/serialise'
+import { getConsentState, mayChat } from '@/modules/chat/lib/consent'
+import { linkConversationToVisitor, visitorFromRequest } from '@/modules/chat/lib/visitors'
+import { CONSENT_CATEGORY } from '@/modules/chat/lib/constants'
 
 // The visitor's side of a chat: read what is new, and say something.
 
@@ -48,8 +51,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const settings = await getChatSettings()
+  const [settings, consent] = await Promise.all([getChatSettings(), getConsentState()])
   if (!settings.enabled) return errorResponse('Chat is switched off at the moment.', 403)
+  // The widget asks first; this is for anything that did not.
+  if (!mayChat(request, consent.gate)) {
+    return NextResponse.json(
+      { error: 'Live chat needs your OK on our cookie settings first.', needsConsent: CONSENT_CATEGORY },
+      { status: 403 },
+    )
+  }
 
   const form = await readMessageForm(request)
   if (!form) return errorResponse('That message could not be read.')
@@ -80,6 +90,9 @@ export async function POST(request: NextRequest) {
     })
     claim = `${id}.${secret}`
     conversationId = id
+    // A visitor already on the visitor list: their chat shows where they are.
+    const visitor = await visitorFromRequest(request).catch(() => null)
+    if (visitor) await linkConversationToVisitor(id, visitor.id)
   } else {
     conversationId = conversation.id
     if (await countVisitorMessages(conversation.id, new Date(Date.now() - 60 * 1000)) >= MESSAGES_PER_MINUTE) {

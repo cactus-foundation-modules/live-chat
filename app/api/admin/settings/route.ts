@@ -3,12 +3,17 @@ import { z } from 'zod'
 import { errorResponse } from '@/lib/utils'
 import { getChatSettings, saveChatSettings } from '@/modules/chat/lib/settings'
 import { requirePermission } from '@/modules/chat/lib/admin-auth'
+import { getConsentState } from '@/modules/chat/lib/consent'
+import { getAdminPathCached } from '@/lib/config/site'
 import { PERM_MANAGE } from '@/modules/chat/lib/constants'
 
 export async function GET() {
   const auth = await requirePermission(PERM_MANAGE)
   if ('response' in auth) return auth.response
-  return NextResponse.json(await getChatSettings(), { headers: { 'Cache-Control': 'no-store' } })
+  const [settings, consent, adminPath] = await Promise.all([getChatSettings(), getConsentState(), getAdminPathCached().catch(() => null)])
+  // Read only, alongside the settings: whether the cookie banner carries the
+  // Live chat switch, and where to go to add it. Never saved back.
+  return NextResponse.json({ ...settings, consentGate: consent.gate, adminPath }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 const Body = z.object({
@@ -21,6 +26,7 @@ const Body = z.object({
   hideBubbleOnMobile: z.boolean(),
   awayLabel: z.string().trim().min(1).max(40),
   awayMessage: z.string().trim().min(1).max(300),
+  trackVisitors: z.boolean(),
 })
 
 export async function PUT(request: NextRequest) {

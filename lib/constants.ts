@@ -30,3 +30,30 @@ export const VISITOR_HEADER = 'x-chat-visitor'
 export const CHAT_OPEN_EVENT = 'cactus:chat-open'
 
 export const FILE_ACCEPT = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt'
+
+/** The cookie banner category this module asks visitors to agree to. The same
+ *  key the Chatwoot-powered live chat declares, so a site moving from one to the
+ *  other keeps the answers its visitors already gave. */
+export const CONSENT_CATEGORY = 'live-chat'
+
+/** The header a visitor's browser proves it owns its visitor row with. */
+export const PRESENCE_HEADER = 'x-chat-presence'
+
+/** How recently a visitor must have checked in to count as on the site now.
+ *  The widget checks in every 30 seconds while the tab is in front. */
+export const ONLINE_WINDOW_SECONDS = 90
+
+/** How often the widget checks in while the tab is in front. */
+export const PRESENCE_EVERY_MS = 30_000
+
+/** A visitor's trail is deleted this long after they were last seen. */
+export const VISITOR_RETENTION_DAYS = 7
+
+/** How many pages of a visitor's trail are kept. */
+export const MAX_TRAIL = 30
+
+/** Where the shop keeps a visitor's basket in their browser, and the event it
+ *  fires when the basket changes. Read only, and only when it is there: the
+ *  chat does not need the shop, it just shows the basket when there is one. */
+export const SHOP_CART_STORAGE_KEY = 'cactus_shop_cart'
+export const SHOP_CART_EVENT = 'cactus-shop-cart-changed'

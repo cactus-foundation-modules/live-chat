@@ -31,6 +31,14 @@ own media storage (Backblaze on most sites).
 - **Answer from anywhere.** From *Inbox > Live chat* in the admin, from the
   bubble on the site itself while you are signed in, or from the Unified Inbox
   if you have it installed - new chats land there the moment they are sent.
+- **See who is on the site.** Everybody browsing who said yes to the Live chat
+  cookies is listed while they are here, chatting or not: the page they are on,
+  the pages they came through and, with the shop, what is in their basket. Say
+  hello first and the chat pops up on their screen.
+- **Asks first.** Declares a *Live chat* category for your cookie banner. Once
+  the banner carries it, a visitor is asked before they can chat (one button,
+  live chat only), and anybody who said no is shown the cookie settings when
+  they try to send something.
 - **Admin alerts.** Waiting chats light the admin bell, and buzz anyone who has
   desktop alerts switched on.
 - **Tidies up after itself.** Chats with nothing said in them for longer than
@@ -40,14 +48,15 @@ own media storage (Backblaze on most sites).
 
 *Settings > Live Chat*: switch the bubble on or off, its label, the greeting,
 which corner it sits in, whether visitors may email themselves a transcript,
-and how long chats are kept.
+how long chats are kept, and whether to list who is on the site. It also tells
+you if your cookie banner is missing the Live chat switch.
 
 ## Permissions
 
 | Key | Lets somebody |
 | --- | --- |
-| `chat.view` | read chats, and see the admin bubble on the site |
-| `chat.reply` | reply to and end chats |
+| `chat.view` | read chats, see the admin bubble on the site and who is on the site |
+| `chat.reply` | reply to and end chats, and message a visitor first |
 | `chat.manage` | change settings and delete chats |
 
 ## How it works (for developers)
@@ -59,7 +68,14 @@ and how long chats are kept.
   views every 3-5 seconds, all backing off when the tab is hidden.
 - A visitor proves a chat is theirs with a secret their browser was handed when
   the chat began (sent as the `x-chat-visitor` header). Only its hash is stored.
-  No cookies, no accounts.
+  No accounts. Where the cookie banner carries the `live-chat` category,
+  nothing is kept in the browser until the visitor says yes to it.
+- Visitors who said yes check in to `/api/m/chat/widget/presence` as they move
+  around (and every 30 seconds while the tab is in front), claimed with their
+  own `x-chat-presence` secret. The basket is read from the shop's own
+  `localStorage` copy (ids and quantities) and named from `shp_products` on the
+  server, when that table exists. Trails are deleted 7 days after the visitor
+  was last seen, or at once if they withdraw consent.
 - Attachments are written under `media/chat/<conversation>/` with an
   unguessable key and served only through `/api/m/chat/attachments/<id>`,
   either to an admin with `chat.view` or via a signed link.

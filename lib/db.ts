@@ -15,6 +15,9 @@ export type ChatConversation = {
   visitorEmail: string | null
   status: ChatStatus
   pageUrl: string | null
+  /** The visitor row this chat belongs to, when they agreed to be listed. */
+  visitorId: string | null
+  startedBy: 'visitor' | 'agent'
   unreadForAgents: number
   unreadForVisitor: number
   lastMessageAt: Date
@@ -60,6 +63,8 @@ function toConversation(r: Row): ChatConversation {
     visitorEmail: (r.visitor_email as string | null) ?? null,
     status: r.status === 'closed' ? 'closed' : 'open',
     pageUrl: (r.page_url as string | null) ?? null,
+    visitorId: (r.visitor_id as string | null) ?? null,
+    startedBy: r.started_by === 'agent' ? 'agent' : 'visitor',
     unreadForAgents: Number(r.unread_for_agents ?? 0),
     unreadForVisitor: Number(r.unread_for_visitor ?? 0),
     lastMessageAt: r.last_message_at as Date,
@@ -106,10 +111,12 @@ export async function createConversation(data: {
   email: string | null
   pageUrl: string | null
   ipHash: string | null
+  visitorId?: string | null
+  startedBy?: 'visitor' | 'agent'
 }): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_conversations" ("id", "visitor_token_hash", "visitor_name", "visitor_email", "page_url", "ip_hash")
-    VALUES (${data.id}, ${data.tokenHash}, ${data.name}, ${data.email}, ${data.pageUrl}, ${data.ipHash})
+    INSERT INTO "chat_conversations" ("id", "visitor_token_hash", "visitor_name", "visitor_email", "page_url", "ip_hash", "visitor_id", "started_by")
+    VALUES (${data.id}, ${data.tokenHash}, ${data.name}, ${data.email}, ${data.pageUrl}, ${data.ipHash}, ${data.visitorId ?? null}, ${data.startedBy ?? 'visitor'})
   `
 }
 

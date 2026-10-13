@@ -83,6 +83,24 @@ export const CHAT_CSS = `
 .cch-item-top{display:flex;justify-content:space-between;gap:8px;font-weight:600}
 .cch-item-top time{font-weight:400;font-size:12px;color:var(--color-text-muted);flex:none}
 .cch-item-preview{font-size:13px;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cch-item-tags{display:inline-flex;gap:4px;flex:none}
+.cch-tag{font-size:11px;font-weight:600;border:1px solid var(--color-border-strong);border-radius:999px;padding:1px 8px;color:var(--color-text-secondary);background:var(--color-surface)}
+.cch-tabs{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--color-border);background:var(--color-surface)}
+.cch-visitor{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.cch-visitor p{margin:0}
+.cch-visitor h3{margin:8px 0 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--color-text-secondary)}
+.cch-visitor a{color:var(--color-primary)}
+.cch-presence{display:inline-block;width:8px;height:8px;border-radius:999px;background:var(--color-text-muted);margin-right:6px;vertical-align:middle}
+.cch-presence.on{background:var(--color-success)}
+.cch-cart,.cch-trail{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.cch-cart li,.cch-trail li{display:flex;justify-content:space-between;gap:8px;min-width:0}
+.cch-cart li span:first-child,.cch-trail li a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cch-cart-total{border-top:1px solid var(--color-border);padding-top:4px;font-weight:600}
+.cch-trail time{flex:none}
+.cch-about{border-bottom:1px solid var(--color-border);background:var(--color-surface)}
+.cch-about summary{cursor:pointer;padding:6px 14px;font-size:13px;color:var(--color-text-secondary)}
+.cch-about[open] summary{border-bottom:1px solid var(--color-border)}
+.cch-about .cch-visitor{padding:10px 14px;max-height:240px;overflow-y:auto}
 .cch-item.unread .cch-item-top span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:999px;background:var(--color-primary);margin-right:6px;vertical-align:middle}
 `
 

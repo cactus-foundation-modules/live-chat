@@ -2,6 +2,7 @@ import { connection } from 'next/server'
 import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasPermission } from '@/lib/permissions/check'
 import { getChatSettings } from '@/modules/chat/lib/settings'
+import { getConsentState } from '@/modules/chat/lib/consent'
 import { PERM_REPLY, PERM_VIEW } from '@/modules/chat/lib/constants'
 import { chatBlockComponent } from './ChatBlock'
 import { VisitorWidget } from './VisitorWidget'
@@ -19,6 +20,7 @@ async function ChatRsc() {
     const canReply = await hasPermission(user, PERM_REPLY).catch(() => false)
     return <AgentBubble position={settings.position} canReply={canReply} hideOnMobile={settings.hideBubbleOnMobile} />
   }
+  const consent = await getConsentState()
   return (
     <VisitorWidget
       position={settings.position}
@@ -29,6 +31,8 @@ async function ChatRsc() {
       online={settings.online}
       awayLabel={settings.awayLabel}
       awayMessage={settings.awayMessage}
+      consent={consent.banner}
+      track={settings.trackVisitors && consent.gate === 'category'}
     />
   )
 }

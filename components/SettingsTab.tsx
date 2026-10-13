@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { API_BASE } from '@/modules/chat/lib/constants'
 import type { ChatSettings } from '@/modules/chat/lib/settings'
 
+type Loaded = ChatSettings & { consentGate?: 'category' | 'none'; adminPath?: string | null }
+
 // Settings > Live Chat. Deliberately short: there is not much to set, which is
 // rather the point of this module.
 
 export function ChatSettingsTab() {
-  const [settings, setSettings] = useState<ChatSettings | null>(null)
+  const [settings, setSettings] = useState<Loaded | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
@@ -17,7 +19,7 @@ export function ChatSettingsTab() {
     let live = true
     fetch(`${API_BASE}/admin/settings`, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((json: ChatSettings | null) => { if (live && json) setSettings(json) })
+      .then((json: Loaded | null) => { if (live && json) setSettings(json) })
       .catch(() => { if (live) setErr('The settings could not be loaded.') })
     return () => { live = false }
   }, [])
@@ -100,6 +102,30 @@ export function ChatSettingsTab() {
         <textarea id="chat-away" rows={3} maxLength={300} value={settings.awayMessage} onChange={(e) => set('awayMessage', e.target.value)} />
         <p className="field-hint">Shown instead of the greeting while you are set to offline. The Online/Offline switch lives on the Inbox tab and on the bubble you see when signed in.</p>
       </div>
+
+      <h3 className="card-title" style={{ marginTop: 'var(--space-6)' }}>Visitors and cookies</h3>
+      {settings.consentGate === 'none' ? (
+        <div className="alert alert-warning" role="status">
+          Your cookie banner has no <strong>Live chat</strong> switch on it (or the banner is off), so visitors are never asked about it.
+          Until they are, chatting works as it always has, nobody is asked first, and the visitor list stays empty because nobody has agreed to be on it.
+          Add the Live chat category on the GDPR tab - this module offers it as a one-click suggestion there.{' '}
+          {settings.adminPath ? <a href={`/${settings.adminPath}/config?tab=gdpr#gdpr-banner`}>Open the cookie banner settings</a> : null}
+        </div>
+      ) : (
+        <p className="field-hint">
+          Your cookie banner carries the Live chat switch. A visitor who has not said yes to it is asked to before they can send a message,
+          and anybody who said no is shown the cookie settings when they try.
+        </p>
+      )}
+
+      <label className="settings-check">
+        <input type="checkbox" checked={settings.trackVisitors} onChange={(e) => set('trackVisitors', e.target.checked)} />
+        Show who is on the site, with the pages they have looked at and what is in their basket
+      </label>
+      <p className="field-hint">
+        Only visitors who said yes to the Live chat cookies are listed. You can message them first, from Inbox or the bubble you see when signed in.
+        Their trail is deleted a week after they were last here, or straight away if they change their mind.
+      </p>
 
       <label className="settings-check">
         <input type="checkbox" checked={settings.transcripts} onChange={(e) => set('transcripts', e.target.checked)} />

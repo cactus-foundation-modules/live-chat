@@ -1,6 +1,6 @@
 {
   "name": "chat",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "tablePrefix": "chat_",
   "description": "Live Chat - a small, quick chat bubble for your site, with attachments, browser notifications for visitors, emailed transcripts and replies from the admin, the site itself or the Unified Inbox.",
   "requiresCoreVersion": "0.5.1779",
@@ -64,6 +64,13 @@
       ]
     }
   ],
+  "cookieCategories": [
+    {
+      "key": "live-chat",
+      "label": "Live chat",
+      "description": "Lets the chat window remember your conversation with us, and lets us see which page you are on and what is in your basket so we can help - and say hello first. Nothing is shared with anyone else, and your trail around the site is deleted a week after your last visit."
+    }
+  ],
   "requiredEnvVars": [
     {
       "name": "ENCRYPTION_KEY",
@@ -78,6 +85,7 @@
     "chat_attachments",
     "chat_messages",
     "chat_conversations",
+    "chat_visitors",
     "chat_settings"
   ],
   "cronJobs": [
