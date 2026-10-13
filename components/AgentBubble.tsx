@@ -1,0 +1,98 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { CHAT_OPEN_EVENT } from '@/modules/chat/lib/constants'
+import type { ClientConversation } from '@/modules/chat/lib/serialise'
+import { ChatStyles } from './ui'
+import { AgentThread, ConversationList, useChatList } from './AgentThread'
+
+// What a colleague signed in to the admin sees on the public site instead of
+// the visitor's widget: the waiting chats, answerable without leaving the page.
+// While it is shut, a new message pops up above the bubble the same way a
+// reply does for a visitor.
+
+type Peek = { id: string; who: string; text: string }
+
+export function AgentBubble({ position, canReply }: { position: 'left' | 'right'; canReply: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState<string | null>(null)
+  const [peeks, setPeeks] = useState<Peek[]>([])
+  const { conversations, unread, refresh } = useChatList('open', open ? 4_000 : 10_000)
+  const lastSeen = useRef<Map<string, string> | null>(null)
+
+  useEffect(() => {
+    const show = () => setOpen(true)
+    window.addEventListener(CHAT_OPEN_EVENT, show)
+    return () => window.removeEventListener(CHAT_OPEN_EVENT, show)
+  }, [])
+
+  // A chat whose newest message changed and is waiting on us is news.
+  useEffect(() => {
+    const now = new Map(conversations.map((c) => [c.id, c.lastMessageAt]))
+    const before = lastSeen.current
+    lastSeen.current = now
+    if (!before || open) return
+    const fresh: Peek[] = conversations
+      .filter((c: ClientConversation) => c.unread > 0 && before.get(c.id) !== c.lastMessageAt)
+      .map((c) => ({ id: c.id, who: c.visitorName || c.visitorEmail || 'Visitor', text: c.preview ?? '' }))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from the list the poll just fetched
+    if (fresh.length > 0) setPeeks((prev) => [...prev.filter((p) => !fresh.some((f) => f.id === p.id)), ...fresh].slice(-3))
+  }, [conversations, open])
+
+  function openChat(id: string | null) {
+    setActive(id)
+    setPeeks([])
+    setOpen(true)
+  }
+
+  return (
+    <div className="cch-root">
+      <ChatStyles />
+      <div className={`cch-dock ${position}`}>
+        {open ? (
+          <section className="cch-panel" aria-label="Live chats">
+            {active ? (
+              <AgentThread id={active} canReply={canReply} compact onBack={() => setActive(null)} onChanged={refresh} />
+            ) : (
+              <>
+                <header className="cch-head">
+                  <h2>Live chats{unread > 0 ? ` (${unread} waiting)` : ''}</h2>
+                  <button type="button" aria-label="Minimise" onClick={() => setOpen(false)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                  </button>
+                </header>
+                <ConversationList conversations={conversations} onPick={(id) => setActive(id)} empty="No open chats. Suspiciously quiet." />
+              </>
+            )}
+            {active ? (
+              <div style={{ borderTop: '1px solid var(--color-border)', padding: 6, textAlign: 'right', background: 'var(--color-surface)' }}>
+                <button type="button" className="cch-btn" onClick={() => setOpen(false)}>Minimise</button>
+              </div>
+            ) : null}
+          </section>
+        ) : (
+          <>
+            {peeks.length > 0 ? (
+              <div className="cch-peeks">
+                {peeks.map((p) => (
+                  <div key={p.id} style={{ position: 'relative' }}>
+                    <button type="button" className="cch-peek" onClick={() => openChat(p.id)}>
+                      <strong>{p.who}</strong>
+                      <span>{p.text}</span>
+                    </button>
+                    <button type="button" className="cch-peek-x" aria-label="Dismiss" onClick={() => setPeeks(peeks.filter((x) => x.id !== p.id))}>×</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <button type="button" className="cch-launcher" onClick={() => openChat(null)} aria-label={unread > 0 ? `Live chats (${unread} waiting)` : 'Live chats'}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+              <span>Chats</span>
+              {unread > 0 ? <span className="cch-badge">{unread}</span> : null}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
