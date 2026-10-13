@@ -266,7 +266,7 @@ export async function insertMessage(data: {
   attachments?: NewAttachment[]
 }): Promise<ChatMessage> {
   const attachments = data.attachments ?? []
-  const preview = previewOf(data.body) ?? (attachments.length > 0 ? `📎 ${attachments[0].filename}` : null)
+  const preview = previewOf(data.body) ?? (attachments[0] ? `📎 ${attachments[0].filename}` : null)
   const toAgents = data.sender === 'visitor' ? 1 : 0
   const toVisitor = data.sender === 'agent' ? 1 : 0
 
@@ -277,6 +277,7 @@ export async function insertMessage(data: {
       RETURNING *
     `
     const row = inserted[0]
+    if (!row) throw new Error('The message was not saved.')
     const messageId = Number(row.id)
     for (const a of attachments) {
       await tx.$executeRaw`

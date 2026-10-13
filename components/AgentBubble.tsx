@@ -35,7 +35,6 @@ export function AgentBubble({ position, canReply }: { position: 'left' | 'right'
     const fresh: Peek[] = conversations
       .filter((c: ClientConversation) => c.unread > 0 && before.get(c.id) !== c.lastMessageAt)
       .map((c) => ({ id: c.id, who: c.visitorName || c.visitorEmail || 'Visitor', text: c.preview ?? '' }))
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from the list the poll just fetched
     if (fresh.length > 0) setPeeks((prev) => [...prev.filter((p) => !fresh.some((f) => f.id === p.id)), ...fresh].slice(-3))
   }, [conversations, open])
 

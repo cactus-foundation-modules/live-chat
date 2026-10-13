@@ -86,7 +86,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
       const json = (await res.json()) as { conversation: ClientConversation; messages: ClientMessage[] }
       setConversation(json.conversation)
       if (json.messages.length > 0) {
-        lastId.current = json.messages[json.messages.length - 1].id
+        lastId.current = json.messages[json.messages.length - 1]?.id ?? lastId.current
         setMessages((prev) => {
           const known = new Set(prev.map((m) => m.id))
           return [...prev, ...json.messages.filter((m) => !known.has(m.id))]

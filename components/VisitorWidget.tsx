@@ -101,7 +101,7 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
       const json = (await res.json()) as { status: 'open' | 'closed'; messages: ClientMessage[] }
       setStatus(json.status)
       if (json.messages.length === 0) return
-      lastId.current = json.messages[json.messages.length - 1].id
+      lastId.current = json.messages[json.messages.length - 1]?.id ?? lastId.current
       setMessages((prev) => {
         const known = new Set(prev.map((m) => m.id))
         return [...prev, ...json.messages.filter((m) => !known.has(m.id))]
@@ -115,8 +115,8 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
         // launcher, the way a text pops up on a phone.
         setPeeks((prev) => [...prev, ...fresh].slice(-3))
       }
-      if (document.hidden && !savedRef.current.pushed && 'Notification' in window && Notification.permission === 'granted') {
-        const latest = fresh[fresh.length - 1]
+      const latest = fresh[fresh.length - 1]
+      if (latest && document.hidden && !savedRef.current.pushed && 'Notification' in window && Notification.permission === 'granted') {
         try { new Notification(latest.authorName ? `${latest.authorName} replied` : 'New message', { body: latest.body.slice(0, 160), tag: 'cactus-chat' }) } catch { /* some browsers only allow these from a worker */ }
       }
     } catch { /* the next round will catch up */ }
@@ -125,7 +125,8 @@ export function VisitorWidget({ position, label, greeting, transcripts }: Props)
   // The first load brings the whole chat back; after that, only what is new.
   useEffect(() => {
     if (!claim) return
-    void poll(false)
+    // Through the microtask queue so the effect body itself sets no state.
+    void Promise.resolve().then(() => poll(false))
   }, [claim, poll])
 
   useEffect(() => {
