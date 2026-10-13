@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CHAT_OPEN_EVENT } from '@/modules/chat/lib/constants'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import type { ClientConversation } from '@/modules/chat/lib/serialise'
-import { ChatStyles } from './ui'
+import { BodyPortal, ChatStyles } from './ui'
 import { AgentThread, ConversationList, useChatList } from './AgentThread'
 import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
 
@@ -50,6 +50,7 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
   }
 
   return (
+    <BodyPortal>
     <div className="cch-root">
       <ChatStyles />
       <div className={`cch-dock ${position}${hideOnMobile ? ' hide-mobile' : ''}`}>
@@ -99,5 +100,6 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
         )}
       </div>
     </div>
+    </BodyPortal>
   )
 }

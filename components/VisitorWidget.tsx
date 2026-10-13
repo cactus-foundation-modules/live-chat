@@ -5,7 +5,7 @@ import { API_BASE, CHAT_OPEN_EVENT, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '
 import { cleanEmail } from '@/modules/chat/lib/text'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
-import { ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
+import { BodyPortal, ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
 
 // The chat as a visitor sees it. Nothing is stored and nothing is fetched until
 // they send their first message; from then on their browser holds the claim to
@@ -62,6 +62,8 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const [peeks, setPeeks] = useState<ClientMessage[]>([])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [savingDetails, setSavingDetails] = useState(false)
+  const [detailsError, setDetailsError] = useState('')
   const [askNotify, setAskNotify] = useState(false)
   const [ending, setEnding] = useState(false)
   const [ended, setEnded] = useState<string | null>(null)
@@ -164,10 +166,10 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const unread = claim ? messages.filter((m) => m.sender === 'agent' && m.id > (saved.seen ?? 0)).length : 0
   useEffect(() => { publishUnread(unread) }, [unread])
 
-  // A page can be served from a cache; whether anyone is in is checked fresh
-  // each time the window opens, for visitors who have not started a chat yet.
+  // A page can be served from a cache that is hours old, so the online/away
+  // answer baked into it is only a first guess: it is checked fresh as the page
+  // loads, and again each time the window opens or closes.
   useEffect(() => {
-    if (!open) return
     let live = true
     fetch(`${API_BASE}/widget/status`, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
@@ -193,6 +195,35 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setStatus('open')
     if (!savedRef.current.asked && 'Notification' in window && Notification.permission === 'default') setAskNotify(true)
     return true
+  }
+
+  // Saving the name and email box on its own, so details reach us without the
+  // visitor having to send a message first. Whatever is saved drops out of the
+  // box; the box goes once both are in.
+  async function saveDetails() {
+    const nextName = !savedRef.current.name ? name.trim() : ''
+    const typedEmail = !savedRef.current.email ? email.trim() : ''
+    const nextEmail = typedEmail ? cleanEmail(typedEmail) : null
+    if (typedEmail && !nextEmail) { setDetailsError('That email address does not look quite right.'); return }
+    if (!nextName && !nextEmail) return
+    setSavingDetails(true)
+    setDetailsError('')
+    try {
+      if (savedRef.current.claim) {
+        const res = await fetch(`${API_BASE}/widget/details`, {
+          method: 'POST',
+          headers: { ...headers(), 'content-type': 'application/json' },
+          body: JSON.stringify({ name: nextName || undefined, email: nextEmail ?? undefined }),
+        })
+        if (!res.ok) throw new Error(await readError(res))
+      }
+      // No chat yet: kept here, and sent along with their first message.
+      update({ ...(nextName ? { name: nextName } : {}), ...(nextEmail ? { email: nextEmail } : {}) })
+    } catch (err) {
+      setDetailsError(err instanceof Error ? err.message : 'Those details could not be saved. Please try again.')
+    } finally {
+      setSavingDetails(false)
+    }
   }
 
   async function enableNotifications() {
@@ -240,6 +271,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   }
 
   return (
+    <BodyPortal>
     <div className="cch-root">
       <ChatStyles />
       <div className={`cch-dock ${position}${hideOnMobile ? ' hide-mobile' : ''}`}>
@@ -253,11 +285,17 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
               </button>
             </header>
             <MessageList messages={messages} mine="visitor" intro={greeting}>
-              {status === 'open' && !ending ? (
+              {status === 'open' && !ending && !(saved.name && saved.email) ? (
                 <div className="cch-card">
                   <p className="cch-muted">{online ? 'Tell us who you are, if you like - it helps us reply by email if you have to dash off.' : 'Leave your email if you would like a reply - we cannot answer straight away.'}</p>
-                  <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-                  <input className="cch-input" type="email" placeholder="Your email (optional)" aria-label="Your email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} />
+                  {saved.name ? null : <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" value={name} maxLength={80} onChange={(e) => { setName(e.target.value); setDetailsError('') }} />}
+                  {saved.email ? null : <input className="cch-input" type="email" placeholder="Your email (optional)" aria-label="Your email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setDetailsError('') }} />}
+                  {detailsError ? <div className="cch-error" role="alert">{detailsError}</div> : null}
+                  {(!saved.name && name.trim()) || (!saved.email && email.trim()) ? (
+                    <div className="cch-row">
+                      <button type="button" className="cch-btn primary" disabled={savingDetails} onClick={saveDetails}>{savingDetails ? 'Saving…' : 'Save'}</button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {askNotify ? (
@@ -305,6 +343,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
         )}
       </div>
     </div>
+    </BodyPortal>
   )
 }
 

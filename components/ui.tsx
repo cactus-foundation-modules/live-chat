@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { FILE_ACCEPT, MAX_MESSAGE_CHARS } from '@/modules/chat/lib/constants'
 import { filesProblem } from '@/modules/chat/lib/text'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
@@ -80,6 +81,20 @@ export const CHAT_CSS = `
 .cch-item-preview{font-size:13px;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cch-item.unread .cch-item-top span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:999px;background:var(--color-primary);margin-right:6px;vertical-align:middle}
 `
+
+const noSubscribe = () => () => {}
+
+/** The bubble and its panel, mounted on <body> rather than where the block was
+ *  placed. The block lives in the header, and a header can hide, fade or stack
+ *  what is inside it - core's "hide what scrolls away" marks a zero-height box in
+ *  the top strip as away and sets visibility:hidden on it, which a fixed child
+ *  inherits, so the chat opened invisibly on phones once the page had scrolled.
+ *  On <body> nothing the header does can reach it. Nothing renders on the server:
+ *  the bubble is fixed to the screen, so it was never part of the page's layout. */
+export function BodyPortal({ children }: { children: React.ReactNode }) {
+  const mounted = useSyncExternalStore(noSubscribe, () => true, () => false)
+  return mounted ? createPortal(children, document.body) : null
+}
 
 export function ChatStyles() {
   return <style dangerouslySetInnerHTML={{ __html: CHAT_CSS }} />
