@@ -63,7 +63,7 @@ export const CHAT_CSS = `
 .cch-btn.primary:hover{background:var(--color-primary-hover)}
 .cch-btn.danger{color:var(--color-destructive);border-color:var(--color-destructive-border)}
 .cch-btn:disabled{opacity:.55;cursor:default}
-.cch-input{width:100%;border:1px solid var(--color-border-strong);background:var(--color-surface);color:var(--color-text);border-radius:8px;padding:8px 10px;font:inherit}
+.cch-input{width:100%;border:1px solid var(--color-border-strong);background:var(--color-surface);color:var(--color-text);border-radius:8px;padding:8px 10px;font:inherit;font-size:16px}
 .cch-input::placeholder{color:var(--color-text-muted)}
 .cch-composer{border-top:1px solid var(--color-border);background:var(--color-surface);padding:8px;display:flex;flex-direction:column;gap:6px}
 .cch-composer-row{display:flex;align-items:flex-end;gap:6px}
