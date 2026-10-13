@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // Pictures may show in place; everything else downloads, so nothing a
   // stranger uploaded can render as a page on the site's own origin.
   const inline = isInlineImage(attachment.contentType)
-  const filename = attachment.filename.replace(/["\\\r\n]/g, '')
+  const filename = attachment.filename.replace(/[^\x20-\x7e]|["\\]/g, '_')
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': inline ? attachment.contentType : 'application/octet-stream',

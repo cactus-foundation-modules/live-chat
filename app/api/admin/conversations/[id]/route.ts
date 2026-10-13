@@ -1,0 +1,81 @@
+import { after, NextRequest, NextResponse } from 'next/server'
+import { errorResponse } from '@/lib/utils'
+import {
+  deleteConversations,
+  getConversation,
+  insertMessage,
+  listMessages,
+  markReadByAgents,
+  setStatus,
+  storedFilesFor,
+} from '@/modules/chat/lib/db'
+import { requirePermission } from '@/modules/chat/lib/admin-auth'
+import { clientConversation, clientMessage } from '@/modules/chat/lib/serialise'
+import { deleteStoredFiles } from '@/modules/chat/lib/attachments'
+import { agentName } from '@/modules/chat/lib/agent'
+import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
+import { PERM_MANAGE, PERM_REPLY, PERM_VIEW } from '@/modules/chat/lib/constants'
+
+type Params = { params: Promise<{ id: string }> }
+
+// One chat for the admin: what is new since the last message they hold, and
+// marked read when they are actually looking at it.
+export async function GET(request: NextRequest, { params }: Params) {
+  const auth = await requirePermission(PERM_VIEW)
+  if ('response' in auth) return auth.response
+  const { id } = await params
+  const conversation = await getConversation(id)
+  if (!conversation) return errorResponse('That chat could not be found.', 404)
+
+  const afterId = Math.max(0, Number(request.nextUrl.searchParams.get('after') ?? 0) || 0)
+  const messages = await listMessages(id, afterId)
+  if (request.nextUrl.searchParams.get('read') === '1' && conversation.unreadForAgents > 0) {
+    await markReadByAgents(id)
+    after(syncAgentAlert)
+  }
+  return NextResponse.json(
+    { conversation: clientConversation(conversation), messages: messages.map((m) => clientMessage(m, false)) },
+    { headers: { 'Cache-Control': 'no-store' } },
+  )
+}
+
+// Close or reopen.
+export async function PATCH(request: NextRequest, { params }: Params) {
+  const auth = await requirePermission(PERM_REPLY)
+  if ('response' in auth) return auth.response
+  const { id } = await params
+  const conversation = await getConversation(id)
+  if (!conversation) return errorResponse('That chat could not be found.', 404)
+
+  const body = (await request.json().catch(() => null)) as { status?: unknown } | null
+  const status = body?.status === 'closed' ? 'closed' : body?.status === 'open' ? 'open' : null
+  if (!status) return errorResponse('Say whether the chat should be open or closed.')
+  if (status !== conversation.status) {
+    const name = await agentName(auth.user.id)
+    await insertMessage({
+      conversationId: id,
+      sender: 'system',
+      body: status === 'closed' ? `${name ?? 'We'} ended the chat.` : `${name ?? 'We'} reopened the chat.`,
+    })
+    await setStatus(id, status)
+    if (status === 'closed') await markReadByAgents(id)
+    after(async () => {
+      await syncAgentAlert()
+      await announce(id)
+    })
+  }
+  return NextResponse.json({ ok: true })
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  const auth = await requirePermission(PERM_MANAGE)
+  if ('response' in auth) return auth.response
+  const { id } = await params
+  const files = await storedFilesFor([id])
+  await deleteConversations([id])
+  after(async () => {
+    await deleteStoredFiles(files)
+    await syncAgentAlert()
+  })
+  return NextResponse.json({ ok: true })
+}
