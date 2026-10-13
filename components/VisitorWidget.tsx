@@ -274,7 +274,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     <BodyPortal>
     <div className="cch-root">
       <ChatStyles />
-      <div className={`cch-dock ${position}${hideOnMobile ? ' hide-mobile' : ''}`}>
+      <div className={`cch-dock ${position}${hideOnMobile ? ' cch-no-launcher-mobile' : ''}`}>
         {open ? (
           <section className="cch-panel" aria-label="Live chat">
             <header className="cch-head">

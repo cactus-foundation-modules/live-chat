@@ -10,6 +10,10 @@ import type { ClientMessage } from '@/modules/chat/lib/serialise'
 // on the site and the inbox tab. Colours are the site's own tokens throughout,
 // so it follows the theme in light and dark without a palette of its own.
 
+// Every class here carries the cch- prefix on purpose: core publishes global
+// utility classes (.hide-mobile and friends hide the element outright at that
+// breakpoint), and an unprefixed name collided with one - the whole chat, open
+// window included, vanished on phones.
 export const CHAT_CSS = `
 .cch-root{font:inherit;font-size:15px;line-height:1.4;color:var(--color-text)}
 .cch-root *{box-sizing:border-box}
@@ -28,7 +32,7 @@ export const CHAT_CSS = `
 .cch-peek-x{position:absolute;top:4px;right:4px;border:0;background:transparent;color:var(--color-text-muted);width:24px;height:24px;border-radius:999px}
 .cch-panel{width:370px;max-width:100%;height:min(580px,calc(100vh - 110px - var(--cactus-bottom-bar-offset,0px)));display:flex;flex-direction:column;background:var(--color-surface);border:1px solid var(--color-border);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden}
 @media (max-width:480px){.cch-dock{bottom:calc(12px + var(--cactus-bottom-bar-offset,0px))}.cch-dock.right{right:12px}.cch-dock.left{left:12px}.cch-panel{width:calc(100vw - 24px);height:calc(100vh - 90px - var(--cactus-bottom-bar-offset,0px))}}
-@media (max-width:640px){.cch-dock.hide-mobile .cch-launcher{display:none}}
+@media (max-width:640px){.cch-dock.cch-no-launcher-mobile .cch-launcher{display:none}}
 .cch-head{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--color-primary);color:var(--color-on-primary)}
 .cch-head h2{flex:1;margin:0;font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit}
 .cch-head button{border:0;background:transparent;color:inherit;padding:4px 8px;border-radius:8px}

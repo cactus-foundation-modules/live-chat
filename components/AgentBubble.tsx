@@ -53,7 +53,7 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
     <BodyPortal>
     <div className="cch-root">
       <ChatStyles />
-      <div className={`cch-dock ${position}${hideOnMobile ? ' hide-mobile' : ''}`}>
+      <div className={`cch-dock ${position}${hideOnMobile ? ' cch-no-launcher-mobile' : ''}`}>
         {open ? (
           <section className="cch-panel" aria-label="Live chats">
             {active ? (
