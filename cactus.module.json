@@ -1,0 +1,82 @@
+{
+  "name": "chat",
+  "version": "0.1.0",
+  "tablePrefix": "chat_",
+  "description": "Live Chat - a small, quick chat bubble for your site, with attachments, browser notifications for visitors, emailed transcripts and replies from the admin, the site itself or the Unified Inbox.",
+  "requiresCoreVersion": "0.5.1779",
+  "permissions": [
+    "chat.view",
+    "chat.reply",
+    "chat.manage"
+  ],
+  "settingsTabs": [
+    {
+      "id": "chat",
+      "label": "Live Chat",
+      "permission": "chat.manage",
+      "import": "./components/SettingsTab",
+      "component": "ChatSettingsTab"
+    }
+  ],
+  "extensionPoints": [
+    {
+      "point": "core.inbox-tabs",
+      "id": "chat",
+      "label": "Live chat",
+      "order": 20,
+      "permission": "chat.view",
+      "import": "./components/InboxPanel",
+      "component": "ChatInboxPanel"
+    },
+    {
+      "point": "core.conversation-provider",
+      "id": "chat",
+      "label": "Live chat",
+      "permission": "chat.view",
+      "serverOnly": true,
+      "import": "./lib/conversation-provider",
+      "component": "chatConversationProvider"
+    },
+    {
+      "point": "core.media-private-storage",
+      "id": "chat",
+      "import": "./lib/media-private-storage",
+      "component": "chatPrivateStorage"
+    }
+  ],
+  "puckBlocks": [
+    {
+      "type": "ChatBubble",
+      "import": "./components/ChatBlock",
+      "rscImport": "./components/ChatBlock.rsc",
+      "component": "chatBlockComponent",
+      "rscComponent": "chatBlockRscComponent",
+      "layoutTypes": [
+        "header",
+        "footer"
+      ]
+    }
+  ],
+  "requiredEnvVars": [
+    {
+      "name": "ENCRYPTION_KEY",
+      "required": true
+    },
+    {
+      "name": "CRON_SECRET",
+      "required": false
+    }
+  ],
+  "teardown": [
+    "chat_attachments",
+    "chat_messages",
+    "chat_conversations",
+    "chat_settings"
+  ],
+  "cronJobs": [
+    {
+      "path": "/api/m/chat/cron/retention",
+      "schedule": "47 2 * * *"
+    }
+  ]
+}
