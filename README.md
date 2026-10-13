@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="module-art.webp" alt="Live Chat" width="640" />
+</p>
+
 # Live Chat
 
 A small live chat for Cactus sites that does what it says on the tin and very
