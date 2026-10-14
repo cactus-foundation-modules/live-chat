@@ -113,10 +113,12 @@ export async function createConversation(data: {
   ipHash: string | null
   visitorId?: string | null
   startedBy?: 'visitor' | 'agent'
+  /** Begun by an automatic message rather than a person. */
+  autoStarted?: boolean
 }): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_conversations" ("id", "visitor_token_hash", "visitor_name", "visitor_email", "page_url", "ip_hash", "visitor_id", "started_by")
-    VALUES (${data.id}, ${data.tokenHash}, ${data.name}, ${data.email}, ${data.pageUrl}, ${data.ipHash}, ${data.visitorId ?? null}, ${data.startedBy ?? 'visitor'})
+    INSERT INTO "chat_conversations" ("id", "visitor_token_hash", "visitor_name", "visitor_email", "page_url", "ip_hash", "visitor_id", "started_by", "auto_started")
+    VALUES (${data.id}, ${data.tokenHash}, ${data.name}, ${data.email}, ${data.pageUrl}, ${data.ipHash}, ${data.visitorId ?? null}, ${data.startedBy ?? 'visitor'}, ${data.autoStarted ?? false})
   `
 }
 
@@ -141,13 +143,16 @@ export async function listConversations(status: ChatStatus, limit = 100): Promis
 }
 
 /** For the conversation provider: newest first, optionally only those changed
- *  since a moment, and paged by last message time. */
+ *  since a moment, and paged by last message time. A chat opened by an automatic
+ *  message stays out of this and of the by-email listing until the visitor has
+ *  written back, so an unanswered hello leaves nothing in the Unified Inbox. */
 export async function listConversationPage(opts: { since?: Date; before?: Date; limit: number }): Promise<ChatConversation[]> {
   const since = opts.since ?? new Date(0)
   const before = opts.before ?? new Date('9999-12-31T00:00:00Z')
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT * FROM "chat_conversations"
     WHERE "updated_at" >= ${since} AND "last_message_at" < ${before}
+      AND ("auto_started" = false OR EXISTS (SELECT 1 FROM "chat_messages" m WHERE m."conversation_id" = "chat_conversations"."id" AND m."sender" = 'visitor'))
     ORDER BY "last_message_at" DESC LIMIT ${opts.limit}
   `
   return rows.map(toConversation)
@@ -158,6 +163,7 @@ export async function listConversationsByEmails(emails: string[]): Promise<ChatC
   if (wanted.length === 0) return []
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT * FROM "chat_conversations" WHERE lower("visitor_email") = ANY(${wanted})
+      AND ("auto_started" = false OR EXISTS (SELECT 1 FROM "chat_messages" m WHERE m."conversation_id" = "chat_conversations"."id" AND m."sender" = 'visitor'))
     ORDER BY "last_message_at" DESC LIMIT 50
   `
   return rows.map(toConversation)

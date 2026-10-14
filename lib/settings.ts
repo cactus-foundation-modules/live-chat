@@ -23,6 +23,8 @@ export type ChatSettings = {
   welcomeEnabled: boolean
   welcomeMessage: string
   welcomeDelaySeconds: number
+  /** The name shown on the welcome and basket messages. */
+  autoMessageAuthor: string
   /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
   online: boolean
 }
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   welcomeEnabled: false,
   welcomeMessage: 'Hello! Have a look around, and if there is anything we can help with, just ask here.',
   welcomeDelaySeconds: 20,
+  autoMessageAuthor: 'Our team',
   online: true,
 }
 
@@ -70,14 +73,15 @@ export async function getChatSettings(): Promise<ChatSettings> {
     welcomeEnabled: r.welcome_enabled === true,
     welcomeMessage: typeof r.welcome_message === 'string' && r.welcome_message ? r.welcome_message : DEFAULT_SETTINGS.welcomeMessage,
     welcomeDelaySeconds: Math.max(0, Number(r.welcome_delay_seconds ?? DEFAULT_SETTINGS.welcomeDelaySeconds) || 0),
+    autoMessageAuthor: typeof r.auto_message_author === 'string' && r.auto_message_author.trim() ? r.auto_message_author : DEFAULT_SETTINGS.autoMessageAuthor,
     online: r.agent_online !== false,
   }
 }
 
 export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "auto_message_author", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, ${next.autoMessageAuthor}, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -95,6 +99,7 @@ export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Prom
       "welcome_enabled" = EXCLUDED."welcome_enabled",
       "welcome_message" = EXCLUDED."welcome_message",
       "welcome_delay_seconds" = EXCLUDED."welcome_delay_seconds",
+      "auto_message_author" = EXCLUDED."auto_message_author",
       "updated_at" = now()
   `
 }

@@ -129,6 +129,14 @@ export function ChatSettingsTab() {
         Their trail is deleted a week after they were last here, or straight away if they change their mind.
       </p>
 
+      <div className="field">
+        <label htmlFor="chat-auto-author">Name on automatic messages</label>
+        <input id="chat-auto-author" type="text" maxLength={60} value={settings.autoMessageAuthor} onChange={(e) => set('autoMessageAuthor', e.target.value)} />
+        <p className="field-hint">
+          The name visitors see on the welcome and basket messages below. Replies typed by a colleague still use that colleague&apos;s own name.
+        </p>
+      </div>
+
       <label className="settings-check">
         <input type="checkbox" checked={settings.welcomeEnabled} onChange={(e) => set('welcomeEnabled', e.target.checked)} />
         Send a welcome message to visitors who have not written to us
