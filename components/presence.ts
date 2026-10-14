@@ -6,6 +6,7 @@ import {
   API_BASE,
   PRESENCE_EVERY_MS,
   PRESENCE_HEADER,
+  SHOP_CART_ADDED_EVENT,
   SHOP_CART_EVENT,
   SHOP_CART_STORAGE_KEY,
   VISITOR_HEADER,
@@ -61,6 +62,8 @@ export function usePresence({
 }) {
   const pathname = usePathname()
   const lastCart = useRef<string | null>(null)
+  // Set by the shop's "added" event, sent with the next check-in.
+  const addedRef = useRef(false)
   const handlers = useRef({ presenceClaim, chatClaim, onReply, onRefused })
   useEffect(() => { handlers.current = { presenceClaim, chatClaim, onReply, onRefused } })
   const checkIn = useRef<(force?: boolean) => Promise<void>>(async () => {})
@@ -91,11 +94,13 @@ export function usePresence({
             title: document.title,
             referrer: presence ? undefined : document.referrer,
             cart: sendCart,
+            cartAdded: addedRef.current || undefined,
           }),
         })
         if (res.status === 403) { handlers.current.onRefused(); return }
         if (!res.ok) return
         lastCart.current = cartKey
+        addedRef.current = false
         handlers.current.onReply((await res.json()) as PresenceReply)
       } catch {
         // The next check-in catches up.
@@ -112,6 +117,7 @@ export function usePresence({
     timer = setTimeout(tick, PRESENCE_EVERY_MS)
     const wake = () => { if (!document.hidden) void checkIn.current() }
     const cartChanged = () => { void checkIn.current() }
+    const cartAdded = () => { addedRef.current = true; void checkIn.current() }
 
     let tabs: BroadcastChannel | null = null
     try { tabs = new BroadcastChannel(TABS_CHANNEL) } catch { /* one tab's word is good enough */ }
@@ -141,6 +147,7 @@ export function usePresence({
 
     document.addEventListener('visibilitychange', wake)
     window.addEventListener(SHOP_CART_EVENT, cartChanged)
+    window.addEventListener(SHOP_CART_ADDED_EVENT, cartAdded)
     window.addEventListener('pagehide', leaving)
     window.addEventListener('pageshow', returned)
     return () => {
@@ -149,6 +156,7 @@ export function usePresence({
       tabs?.close()
       document.removeEventListener('visibilitychange', wake)
       window.removeEventListener(SHOP_CART_EVENT, cartChanged)
+      window.removeEventListener(SHOP_CART_ADDED_EVENT, cartAdded)
       window.removeEventListener('pagehide', leaving)
       window.removeEventListener('pageshow', returned)
       checkIn.current = async () => {}

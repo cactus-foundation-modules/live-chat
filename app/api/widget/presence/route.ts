@@ -2,19 +2,24 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { errorResponse } from '@/lib/utils'
+import { createConversation, deleteConversations, insertMessage } from '@/modules/chat/lib/db'
 import { pushNewVisitor } from '@/modules/chat/lib/notify'
 import { getChatSettings } from '@/modules/chat/lib/settings'
 import { getConsentState, mayTrack } from '@/modules/chat/lib/consent'
 import { hashIp, hashSecret, newConversationId, newSecret, visitorConversation } from '@/modules/chat/lib/visitor'
 import {
+  claimCartMessage,
   countVisitorsFromIp,
   createVisitor,
   deleteVisitor,
   getVisitorTrail,
+  getVisitorTokenHash,
   linkConversationToVisitor,
   openChatWeStarted,
+  openChatWithVisitor,
   pruneVisitors,
   recordCheckIn,
+  releaseCartMessage,
   resolveCart,
   visitorFromRequest,
 } from '@/modules/chat/lib/visitors'
@@ -91,6 +96,12 @@ export async function POST(request: NextRequest) {
   const conversation = await visitorConversation(request)
   if (conversation && !conversation.visitorId) await linkConversationToVisitor(conversation.id, claim.id)
 
+  // Something just went in the basket: the owner's message, once per visitor,
+  // while somebody is answering and they have no chat going.
+  if (input.cartAdded === true && settings.cartMessageEnabled && settings.online && !conversation) {
+    await sayHelloOverTheBasket(claim.id, path, settings.cartMessage)
+  }
+
   const chatId = await openChatWeStarted(claim.id)
   return NextResponse.json(
     {
@@ -103,6 +114,26 @@ export async function POST(request: NextRequest) {
     },
     { headers: noStore },
   )
+}
+
+const CART_MESSAGE_AUTHOR = 'Our team'
+
+async function sayHelloOverTheBasket(visitorId: string, path: string, text: string): Promise<void> {
+  if (await openChatWithVisitor(visitorId)) return
+  if (!await claimCartMessage(visitorId)) return
+  let conversationId: string | null = null
+  try {
+    const tokenHash = await getVisitorTokenHash(visitorId)
+    if (!tokenHash) throw new Error('visitor has no secret')
+    conversationId = newConversationId()
+    await createConversation({ id: conversationId, tokenHash, name: null, email: null, pageUrl: path, ipHash: null, visitorId, startedBy: 'agent' })
+    await insertMessage({ conversationId, sender: 'agent', authorName: CART_MESSAGE_AUTHOR, body: text })
+  } catch (err) {
+    // A chat that never got its message is not a chat; let the next add try again.
+    if (conversationId) await deleteConversations([conversationId]).catch(() => 0)
+    await releaseCartMessage(visitorId).catch(() => undefined)
+    console.error('[chat] could not send the basket message', err)
+  }
 }
 
 /** Forget me: the visitor withdrew consent, or ended their visit's trail. */

@@ -10,6 +10,7 @@ import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
 import { BodyPortal, ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
 import { playChime, playSent, unlockAudio } from './sound'
+import { useCartDrawerDodge } from './cart-dock'
 import { forgetPresence, usePresence, type PresenceReply } from './presence'
 
 // The chat as a visitor sees it. Nothing is stored and nothing is fetched until
@@ -76,6 +77,7 @@ type Props = {
 
 export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGreeting, transcripts, hideOnMobile, online: initialOnline, awayLabel, awayMessage, consent, track }: Props) {
   const [online, setOnline] = useState(initialOnline)
+  useCartDrawerDodge(position)
   const label = online ? onlineLabel : awayLabel
   const greeting = online ? onlineGreeting : awayMessage
   const [saved, setSaved] = useState<Saved>({})

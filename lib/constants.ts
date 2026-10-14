@@ -57,3 +57,5 @@ export const MAX_TRAIL = 30
  *  chat does not need the shop, it just shows the basket when there is one. */
 export const SHOP_CART_STORAGE_KEY = 'cactus_shop_cart'
 export const SHOP_CART_EVENT = 'cactus-shop-cart-changed'
+/** The shop announces an add (not a removal or a quantity change) on this. */
+export const SHOP_CART_ADDED_EVENT = 'cactus-shop-cart-added'

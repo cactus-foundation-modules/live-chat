@@ -27,6 +27,8 @@ const Body = z.object({
   awayLabel: z.string().trim().min(1).max(40),
   awayMessage: z.string().trim().min(1).max(300),
   trackVisitors: z.boolean(),
+  cartMessageEnabled: z.boolean(),
+  cartMessage: z.string().trim().min(1).max(300),
 })
 
 export async function PUT(request: NextRequest) {

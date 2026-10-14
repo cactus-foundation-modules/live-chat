@@ -22,11 +22,17 @@ export const CHAT_CSS = `
 .cch-dock{position:fixed;bottom:calc(20px + var(--cactus-bottom-bar-offset,0px));z-index:2147483000;display:flex;flex-direction:column;gap:10px;max-width:calc(100vw - 32px)}
 .cch-dock.right{right:20px;align-items:flex-end}
 .cch-dock.left{left:20px;align-items:flex-start}
+.cch-dock{transition:transform 240ms ease-out}
+html[data-cch-cart=side] .cch-dock{transform:translateX(var(--cch-cart-x,0px))}
+html[data-cch-cart=bottom] .cch-dock{transform:translateY(calc(var(--cch-cart-y,0px) * -1))}
+html[data-cch-cart=full] .cch-dock{display:none}
 .cch-launcher{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:12px 18px;background:var(--color-primary);color:var(--color-on-primary);font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .cch-launcher:hover{background:var(--color-primary-hover)}
 .cch-badge{min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--color-destructive);color:var(--color-on-destructive,#fff);font-size:12px;display:inline-flex;align-items:center;justify-content:center}
-.cch-peeks{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%}
-.cch-peek{position:relative;text-align:left;border:1px solid var(--color-border);border-radius:14px;padding:10px 32px 10px 12px;background:var(--color-surface);color:var(--color-text);box-shadow:0 6px 20px rgba(0,0,0,.14);width:100%}
+.cch-peeks{display:flex;flex-direction:column;gap:8px;width:max-content;max-width:min(300px,100%)}
+.cch-dock.right .cch-peeks{align-items:flex-end}
+.cch-dock.left .cch-peeks{align-items:flex-start}
+.cch-peek{position:relative;text-align:left;border:1px solid var(--color-border);border-radius:14px;padding:10px 32px 10px 12px;background:var(--color-surface);color:var(--color-text);box-shadow:0 6px 20px rgba(0,0,0,.14);width:auto;max-width:100%}
 .cch-peek strong{display:block;font-size:13px;margin-bottom:2px}
 .cch-peek span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .cch-peek-x{position:absolute;top:4px;right:4px;border:0;background:transparent;color:var(--color-text-muted);width:24px;height:24px;border-radius:999px}

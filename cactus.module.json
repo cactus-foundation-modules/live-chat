@@ -1,6 +1,6 @@
 {
   "name": "chat",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "tablePrefix": "chat_",
   "description": "Live Chat - a small, quick chat bubble for your site, with attachments, browser notifications for visitors, emailed transcripts and replies from the admin, the site itself or the Unified Inbox.",
   "requiresCoreVersion": "0.5.1779",

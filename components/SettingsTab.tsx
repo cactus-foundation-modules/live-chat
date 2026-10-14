@@ -128,6 +128,19 @@ export function ChatSettingsTab() {
       </p>
 
       <label className="settings-check">
+        <input type="checkbox" checked={settings.cartMessageEnabled} onChange={(e) => set('cartMessageEnabled', e.target.checked)} />
+        Send a message when someone adds to their basket
+      </label>
+      <div className="field">
+        <label htmlFor="chat-cart-message">Basket message</label>
+        <textarea id="chat-cart-message" rows={2} maxLength={300} value={settings.cartMessage} onChange={(e) => set('cartMessage', e.target.value)} />
+        <p className="field-hint">
+          Sent once to each visitor, the first time they add something, while you are online and they have no chat going.
+          It appears in their chat as a message from your team. Needs the visitor list above switched on, and only reaches visitors who said yes to the Live chat cookies.
+        </p>
+      </div>
+
+      <label className="settings-check">
         <input type="checkbox" checked={settings.transcripts} onChange={(e) => set('transcripts', e.target.checked)} />
         Let visitors email themselves a copy of the chat when they end it
       </label>

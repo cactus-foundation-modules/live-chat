@@ -240,6 +240,23 @@ export async function openChatWithVisitor(visitorId: string): Promise<string | n
   return rows[0]?.id ?? null
 }
 
+/** Marks this visitor as having had the basket message and says whether this
+ *  call was the one to do it, so the message goes out once however many tabs
+ *  add something at the same moment. */
+export async function claimCartMessage(visitorId: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    UPDATE "chat_visitors" SET "cart_message_at" = now()
+    WHERE "id" = ${visitorId} AND "cart_message_at" IS NULL
+    RETURNING "id"
+  `
+  return rows.length > 0
+}
+
+/** Puts the claim back when the message could not be sent after all. */
+export async function releaseCartMessage(visitorId: string): Promise<void> {
+  await prisma.$executeRaw`UPDATE "chat_visitors" SET "cart_message_at" = NULL WHERE "id" = ${visitorId}`
+}
+
 export async function getVisitorTokenHash(id: string): Promise<string | null> {
   const rows = await prisma.$queryRaw<Array<{ token_hash: string }>>`SELECT "token_hash" FROM "chat_visitors" WHERE "id" = ${id} LIMIT 1`
   return rows[0]?.token_hash ?? null

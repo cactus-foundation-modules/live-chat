@@ -13,6 +13,9 @@ export type ChatSettings = {
   /** List visitors who agreed to the Live chat cookie category, with where they
    *  have been and what is in their basket, so we can say hello first. */
   trackVisitors: boolean
+  /** Post `cartMessage` into a visitor's chat the first time they add to their basket. */
+  cartMessageEnabled: boolean
+  cartMessage: string
   /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
   online: boolean
 }
@@ -28,6 +31,8 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   awayLabel: 'Leave a message',
   awayMessage: 'We are away at the moment. Leave a message, and your email if you would like a reply, and we will get back to you when we are next in.',
   trackVisitors: true,
+  cartMessageEnabled: false,
+  cartMessage: 'Good choice! If you have any questions about that, or want a hand with sizes, finishes or delivery, just ask here.',
   online: true,
 }
 
@@ -48,14 +53,16 @@ export async function getChatSettings(): Promise<ChatSettings> {
     awayLabel: typeof r.away_label === 'string' ? r.away_label : DEFAULT_SETTINGS.awayLabel,
     awayMessage: typeof r.away_message === 'string' ? r.away_message : DEFAULT_SETTINGS.awayMessage,
     trackVisitors: r.track_visitors !== false,
+    cartMessageEnabled: r.cart_message_enabled === true,
+    cartMessage: typeof r.cart_message === 'string' && r.cart_message ? r.cart_message : DEFAULT_SETTINGS.cartMessage,
     online: r.agent_online !== false,
   }
 }
 
 export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -67,6 +74,8 @@ export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Prom
       "away_label" = EXCLUDED."away_label",
       "away_message" = EXCLUDED."away_message",
       "track_visitors" = EXCLUDED."track_visitors",
+      "cart_message_enabled" = EXCLUDED."cart_message_enabled",
+      "cart_message" = EXCLUDED."cart_message",
       "updated_at" = now()
   `
 }
