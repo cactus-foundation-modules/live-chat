@@ -31,6 +31,8 @@ export function ChatSettingsTab() {
     setMsg('')
   }
 
+  const secs = (v: string) => Math.max(0, Math.min(3600, Math.round(Number(v) || 0)))
+
   async function saveAll() {
     setBusy(true)
     setErr('')
@@ -128,6 +130,23 @@ export function ChatSettingsTab() {
       </p>
 
       <label className="settings-check">
+        <input type="checkbox" checked={settings.welcomeEnabled} onChange={(e) => set('welcomeEnabled', e.target.checked)} />
+        Send a welcome message to visitors who have not written to us
+      </label>
+      <div className="field">
+        <label htmlFor="chat-welcome-message">Welcome message</label>
+        <textarea id="chat-welcome-message" rows={2} maxLength={300} value={settings.welcomeMessage} onChange={(e) => set('welcomeMessage', e.target.value)} />
+      </div>
+      <div className="field">
+        <label htmlFor="chat-welcome-delay">Send it after (seconds)</label>
+        <input id="chat-welcome-delay" type="number" min={0} max={3600} value={settings.welcomeDelaySeconds} onChange={(e) => set('welcomeDelaySeconds', secs(e.target.value))} />
+        <p className="field-hint">
+          Counted from when the visitor arrived. Sent once to each visitor, while you are online and they have no chat going.
+          It appears in their chat as a message from your team. Needs the visitor list above switched on, and only reaches visitors who said yes to the Live chat cookies.
+        </p>
+      </div>
+
+      <label className="settings-check">
         <input type="checkbox" checked={settings.cartMessageEnabled} onChange={(e) => set('cartMessageEnabled', e.target.checked)} />
         Send a message when someone adds to their basket
       </label>
@@ -138,6 +157,12 @@ export function ChatSettingsTab() {
           Sent once to each visitor, the first time they add something, while you are online and they have no chat going.
           It appears in their chat as a message from your team. Needs the visitor list above switched on, and only reaches visitors who said yes to the Live chat cookies.
         </p>
+      </div>
+
+      <div className="field">
+        <label htmlFor="chat-cart-delay">Send the basket message after (seconds)</label>
+        <input id="chat-cart-delay" type="number" min={0} max={3600} value={settings.cartMessageDelaySeconds} onChange={(e) => set('cartMessageDelaySeconds', secs(e.target.value))} />
+        <p className="field-hint">Counted from their first add. 0 sends it straight away. If they have started chatting with you by then, it is not sent.</p>
       </div>
 
       <label className="settings-check">

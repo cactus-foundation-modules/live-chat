@@ -74,6 +74,10 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-composer{border-top:1px solid var(--color-border);background:var(--color-surface);padding:8px;display:flex;flex-direction:column;gap:6px}
 .cch-composer-row{display:flex;align-items:flex-end;gap:6px}
 .cch-composer textarea{flex:1;resize:none;max-height:120px;min-height:40px}
+.cch-modal-back{position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.cch-modal{background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border);border-radius:12px;padding:16px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.cch-modal h3{margin:0;font-size:16px;font-weight:600;color:inherit}
+.cch-modal p{margin:0}
 .cch-icon{border:0;background:transparent;color:var(--color-text-secondary);width:38px;height:38px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .cch-icon:hover{background:var(--color-bg-subtle)}
 .cch-send{background:var(--color-primary);color:var(--color-on-primary)}

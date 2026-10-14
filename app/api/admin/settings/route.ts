@@ -29,6 +29,10 @@ const Body = z.object({
   trackVisitors: z.boolean(),
   cartMessageEnabled: z.boolean(),
   cartMessage: z.string().trim().min(1).max(300),
+  cartMessageDelaySeconds: z.number().int().min(0).max(3600),
+  welcomeEnabled: z.boolean(),
+  welcomeMessage: z.string().trim().min(1).max(300),
+  welcomeDelaySeconds: z.number().int().min(0).max(3600),
 })
 
 export async function PUT(request: NextRequest) {

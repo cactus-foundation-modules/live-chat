@@ -35,6 +35,14 @@ own media storage (Backblaze on most sites).
   cookies is listed while they are here, chatting or not: the page they are on,
   the pages they came through and, with the shop, what is in their basket. Say
   hello first and the chat pops up on their screen.
+- **Messages we send first.** Optional, off by default, and only while you are
+  online and the visitor has no chat going. A welcome message goes to a visitor
+  who has been on the site a set number of seconds without writing to us, and a
+  basket message goes a set number of seconds (0 = straight away) after their
+  first add. Each is sent once per visitor.
+- **Your own name.** A cog in the chat header lets each colleague choose the
+  name visitors see on their replies; left empty, it is the first name on their
+  account.
 - **Asks first.** Declares a *Live chat* category for your cookie banner. Once
   the banner carries it, a visitor is asked before they can chat (one button,
   live chat only), and anybody who said no is shown the cookie settings when

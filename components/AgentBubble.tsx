@@ -7,6 +7,7 @@ import type { ClientConversation, ClientListedVisitor } from '@/modules/chat/lib
 import { BodyPortal, ChatStyles } from './ui'
 import { AgentThread, ConversationList, useChatList } from './AgentThread'
 import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
+import { NameOverrideButton } from './NameOverride'
 import { useVisitors, VisitorList, VisitorPanel } from './Visitors'
 
 // What a colleague signed in to the admin sees on the public site instead of
@@ -79,6 +80,7 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
                 <header className="cch-head">
                   <h2>Live chats{unread > 0 ? ` (${unread} waiting)` : ''}</h2>
                   {canReply ? <AvailabilitySwitch onDark online={availability.online} busy={availability.busy} onChange={availability.change} /> : null}
+                  {canReply ? <NameOverrideButton /> : null}
                   <button type="button" aria-label="Minimise" onClick={() => setOpen(false)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
                   </button>

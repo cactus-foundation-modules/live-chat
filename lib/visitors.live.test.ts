@@ -119,4 +119,35 @@ suite('visitors leaving the site, against a real database', () => {
     expect(await listedIds()).toEqual([id])
     expect((await visitors.getVisitor(id))?.leftAt).toBeNull()
   })
+
+  it('tracks the welcome and basket messages once each, and the name override', async () => {
+    const times = await visitors.getAutoMessageTimes(id)
+    expect(times?.welcomeSent).toBe(false)
+    expect(times?.sinceCartAddedMs).toBeNull()
+    expect(times?.sinceFirstSeenMs).toBeGreaterThanOrEqual(0)
+
+    expect(await visitors.claimWelcomeMessage(id)).toBe(true)
+    expect(await visitors.claimWelcomeMessage(id)).toBe(false)
+    await visitors.releaseWelcomeMessage(id)
+    expect((await visitors.getAutoMessageTimes(id))?.welcomeSent).toBe(false)
+
+    await visitors.markCartAdded(id)
+    const firstAdd = (await visitors.getAutoMessageTimes(id))?.sinceCartAddedMs
+    expect(firstAdd).not.toBeNull()
+    await visitors.markCartAdded(id)
+    expect((await visitors.getAutoMessageTimes(id))?.sinceCartAddedMs).toBeGreaterThanOrEqual(firstAdd ?? 0)
+
+    expect(await visitors.claimCartMessage(id)).toBe(true)
+    expect((await visitors.getAutoMessageTimes(id))?.sinceCartAddedMs).toBeNull()
+    await visitors.clearCartAdded(id)
+
+    const agent = await import('./agent')
+    expect(await agent.getAgentNameOverride('u1')).toBeNull()
+    await agent.setAgentNameOverride('u1', '  Chris T  ')
+    expect(await agent.getAgentNameOverride('u1')).toBe('Chris T')
+    await agent.setAgentNameOverride('u1', 'Sam')
+    expect(await agent.getAgentNameOverride('u1')).toBe('Sam')
+    await agent.setAgentNameOverride('u1', '   ')
+    expect(await agent.getAgentNameOverride('u1')).toBeNull()
+  })
 })

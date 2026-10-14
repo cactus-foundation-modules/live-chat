@@ -16,6 +16,13 @@ export type ChatSettings = {
   /** Post `cartMessage` into a visitor's chat the first time they add to their basket. */
   cartMessageEnabled: boolean
   cartMessage: string
+  /** Seconds to wait after the add before the basket message goes. 0 is straight away. */
+  cartMessageDelaySeconds: number
+  /** Post `welcomeMessage` into the chat of a visitor who has been here
+   *  `welcomeDelaySeconds` without writing to us. Once per visitor. */
+  welcomeEnabled: boolean
+  welcomeMessage: string
+  welcomeDelaySeconds: number
   /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
   online: boolean
 }
@@ -33,6 +40,10 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   trackVisitors: true,
   cartMessageEnabled: false,
   cartMessage: 'Good choice! If you have any questions about that, or want a hand with sizes, finishes or delivery, just ask here.',
+  cartMessageDelaySeconds: 0,
+  welcomeEnabled: false,
+  welcomeMessage: 'Hello! Have a look around, and if there is anything we can help with, just ask here.',
+  welcomeDelaySeconds: 20,
   online: true,
 }
 
@@ -55,14 +66,18 @@ export async function getChatSettings(): Promise<ChatSettings> {
     trackVisitors: r.track_visitors !== false,
     cartMessageEnabled: r.cart_message_enabled === true,
     cartMessage: typeof r.cart_message === 'string' && r.cart_message ? r.cart_message : DEFAULT_SETTINGS.cartMessage,
+    cartMessageDelaySeconds: Math.max(0, Number(r.cart_message_delay_seconds ?? 0) || 0),
+    welcomeEnabled: r.welcome_enabled === true,
+    welcomeMessage: typeof r.welcome_message === 'string' && r.welcome_message ? r.welcome_message : DEFAULT_SETTINGS.welcomeMessage,
+    welcomeDelaySeconds: Math.max(0, Number(r.welcome_delay_seconds ?? DEFAULT_SETTINGS.welcomeDelaySeconds) || 0),
     online: r.agent_online !== false,
   }
 }
 
 export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -76,6 +91,10 @@ export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Prom
       "track_visitors" = EXCLUDED."track_visitors",
       "cart_message_enabled" = EXCLUDED."cart_message_enabled",
       "cart_message" = EXCLUDED."cart_message",
+      "cart_message_delay_seconds" = EXCLUDED."cart_message_delay_seconds",
+      "welcome_enabled" = EXCLUDED."welcome_enabled",
+      "welcome_message" = EXCLUDED."welcome_message",
+      "welcome_delay_seconds" = EXCLUDED."welcome_delay_seconds",
       "updated_at" = now()
   `
 }

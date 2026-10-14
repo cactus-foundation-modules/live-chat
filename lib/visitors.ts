@@ -257,6 +257,55 @@ export async function releaseCartMessage(visitorId: string): Promise<void> {
   await prisma.$executeRaw`UPDATE "chat_visitors" SET "cart_message_at" = NULL WHERE "id" = ${visitorId}`
 }
 
+export type AutoMessageTimes = {
+  /** Milliseconds since the visitor first turned up. */
+  sinceFirstSeenMs: number
+  welcomeSent: boolean
+  /** Milliseconds since they added something, while the basket message is still owed. */
+  sinceCartAddedMs: number | null
+}
+
+export async function getAutoMessageTimes(visitorId: string): Promise<AutoMessageTimes | null> {
+  const rows = await prisma.$queryRaw<Array<{ since_first: number; welcome_sent: boolean; since_cart: number | null }>>`
+    SELECT (EXTRACT(EPOCH FROM (now() - "first_seen_at")) * 1000)::float8 AS since_first,
+           ("welcome_message_at" IS NOT NULL) AS welcome_sent,
+           CASE WHEN "cart_added_at" IS NULL OR "cart_message_at" IS NOT NULL THEN NULL
+                ELSE (EXTRACT(EPOCH FROM (now() - "cart_added_at")) * 1000)::float8 END AS since_cart
+    FROM "chat_visitors" WHERE "id" = ${visitorId} LIMIT 1
+  `
+  const r = rows[0]
+  if (!r) return null
+  return { sinceFirstSeenMs: Number(r.since_first), welcomeSent: r.welcome_sent, sinceCartAddedMs: r.since_cart === null ? null : Number(r.since_cart) }
+}
+
+/** Notes that this visitor added something and is owed the basket message. Only
+ *  the first add counts, so the delay runs from it however many follow. */
+export async function markCartAdded(visitorId: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "chat_visitors" SET "cart_added_at" = now()
+    WHERE "id" = ${visitorId} AND "cart_added_at" IS NULL AND "cart_message_at" IS NULL
+  `
+}
+
+/** The basket message is no longer owed (a chat is already going, or it went stale). */
+export async function clearCartAdded(visitorId: string): Promise<void> {
+  await prisma.$executeRaw`UPDATE "chat_visitors" SET "cart_added_at" = NULL WHERE "id" = ${visitorId}`
+}
+
+/** As claimCartMessage, for the welcome message. */
+export async function claimWelcomeMessage(visitorId: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    UPDATE "chat_visitors" SET "welcome_message_at" = now()
+    WHERE "id" = ${visitorId} AND "welcome_message_at" IS NULL
+    RETURNING "id"
+  `
+  return rows.length > 0
+}
+
+export async function releaseWelcomeMessage(visitorId: string): Promise<void> {
+  await prisma.$executeRaw`UPDATE "chat_visitors" SET "welcome_message_at" = NULL WHERE "id" = ${visitorId}`
+}
+
 export async function getVisitorTokenHash(id: string): Promise<string | null> {
   const rows = await prisma.$queryRaw<Array<{ token_hash: string }>>`SELECT "token_hash" FROM "chat_visitors" WHERE "id" = ${id} LIMIT 1`
   return rows[0]?.token_hash ?? null

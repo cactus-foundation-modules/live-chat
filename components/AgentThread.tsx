@@ -5,6 +5,7 @@ import { API_BASE } from '@/modules/chat/lib/constants'
 import type { ClientConversation, ClientMessage, ClientVisitor } from '@/modules/chat/lib/serialise'
 import { Composer, MessageList, messageRequest, readError } from './ui'
 import { VisitorDetails } from './Visitors'
+import { NameOverrideButton } from './NameOverride'
 import { MuteButton, playChime, playSent, useAdminMuted } from './sound'
 
 // One chat from our side, used by both the inbox tab and the bubble on the
@@ -167,6 +168,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
         <h2 title={who}>{who}</h2>
         {conversation && canReply && conversation.status === 'open' ? <button type="button" onClick={endChat}>End chat</button> : null}
         <MuteButton muted={muted} onToggle={toggleMute} />
+        {canReply ? <NameOverrideButton /> : null}
         {canManage && !compact ? <button type="button" onClick={remove}>Delete</button> : null}
       </div>
       {conversation && !compact ? (

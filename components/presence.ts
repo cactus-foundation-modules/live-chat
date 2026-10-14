@@ -45,7 +45,7 @@ function readCart(): CartLine[] | undefined {
   }
 }
 
-export type PresenceReply = { claim: string | null; chat: string | null; online?: boolean }
+export type PresenceReply = { claim: string | null; chat: string | null; online?: boolean; recheckInMs?: number }
 
 export function usePresence({
   enabled,
@@ -71,6 +71,8 @@ export function usePresence({
   useEffect(() => {
     if (!enabled) return
     let busy = false
+    // When the server says a message falls due at a certain moment, check in then.
+    let dueTimer: ReturnType<typeof setTimeout> | undefined
     checkIn.current = async () => {
       if (busy) return
       busy = true
@@ -101,7 +103,10 @@ export function usePresence({
         if (!res.ok) return
         lastCart.current = cartKey
         addedRef.current = false
-        handlers.current.onReply((await res.json()) as PresenceReply)
+        const reply = (await res.json()) as PresenceReply
+        clearTimeout(dueTimer)
+        if (typeof reply.recheckInMs === 'number') dueTimer = setTimeout(() => { void checkIn.current() }, reply.recheckInMs + 300)
+        handlers.current.onReply(reply)
       } catch {
         // The next check-in catches up.
       } finally {
@@ -152,6 +157,7 @@ export function usePresence({
     window.addEventListener('pageshow', returned)
     return () => {
       clearTimeout(timer)
+      clearTimeout(dueTimer)
       clearTimeout(stillHere)
       tabs?.close()
       document.removeEventListener('visibilitychange', wake)
