@@ -9,6 +9,7 @@ import { publishUnread } from '@/modules/chat/lib/unread'
 import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent } from '@/modules/chat/lib/consent-client'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
 import { BodyPortal, ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
+import { playChime, playSent, unlockAudio } from './sound'
 import { forgetPresence, usePresence, type PresenceReply } from './presence'
 
 // The chat as a visitor sees it. Nothing is stored and nothing is fetched until
@@ -39,40 +40,6 @@ type Saved = {
   muted?: boolean
   /** The newest message we have already chimed for, so a reload never repeats it. */
   chimed?: number
-}
-
-// A short two-note chime made in the browser, so there is no sound file to host.
-// Browsers only let a page make noise once the visitor has touched it, so the
-// context is made (and woken) on their first tap or key press anywhere.
-let audio: AudioContext | null = null
-function audioContext(): AudioContext | null {
-  if (audio) return audio
-  try {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (Ctor) audio = new Ctor()
-  } catch { /* no audio here */ }
-  return audio
-}
-function unlockAudio() {
-  const ctx = audioContext()
-  if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {})
-}
-function playChime() {
-  const ctx = audioContext()
-  if (!ctx || ctx.state !== 'running') return
-  const now = ctx.currentTime
-  ;([{ freq: 880, offset: 0 }, { freq: 1174.66, offset: 0.14 }]).forEach(({ freq, offset }) => {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = freq
-    gain.gain.setValueAtTime(0.0001, now + offset)
-    gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.02)
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.45)
-    osc.connect(gain).connect(ctx.destination)
-    osc.start(now + offset)
-    osc.stop(now + offset + 0.5)
-  })
 }
 
 function load(): Saved {
@@ -341,6 +308,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setMessages((prev) => [...prev, json.message])
     lastId.current = Math.max(lastId.current, json.message.id)
     setStatus('open')
+    if (!savedRef.current.muted) playSent()
     if (!savedRef.current.asked && 'Notification' in window && Notification.permission === 'default') setAskNotify(true)
     return true
   }

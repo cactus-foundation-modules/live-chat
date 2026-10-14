@@ -5,6 +5,7 @@ import { API_BASE } from '@/modules/chat/lib/constants'
 import type { ClientConversation, ClientMessage, ClientVisitor } from '@/modules/chat/lib/serialise'
 import { Composer, MessageList, messageRequest, readError } from './ui'
 import { VisitorDetails } from './Visitors'
+import { MuteButton, playChime, playSent, useAdminMuted } from './sound'
 
 // One chat from our side, used by both the inbox tab and the bubble on the
 // site. It asks for anything new every few seconds while it is on screen, and
@@ -14,6 +15,10 @@ export function useChatList(status: 'open' | 'closed', everyMs: number) {
   const [conversations, setConversations] = useState<ClientConversation[]>([])
   const [unread, setUnread] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  const [muted] = useAdminMuted()
+  const mutedRef = useRef(muted)
+  useEffect(() => { mutedRef.current = muted }, [muted])
+  const lastUnread = useRef<number | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -23,6 +28,9 @@ export function useChatList(status: 'open' | 'closed', everyMs: number) {
       setConversations(json.conversations)
       setUnread(json.unread)
       setLoaded(true)
+      // Something new since the last look (not the first load): sound it.
+      if (lastUnread.current !== null && json.unread > lastUnread.current && !mutedRef.current) playChime()
+      lastUnread.current = json.unread
     } catch { /* next round */ }
   }, [status])
 
@@ -79,6 +87,9 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
   const [messages, setMessages] = useState<ClientMessage[]>([])
   const [error, setError] = useState('')
   const lastId = useRef(0)
+  const [muted, toggleMute] = useAdminMuted()
+  const mutedRef = useRef(muted)
+  useEffect(() => { mutedRef.current = muted }, [muted])
 
   const poll = useCallback(async () => {
     try {
@@ -89,6 +100,8 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
       setConversation(json.conversation)
       setVisitor(json.visitor ?? null)
       if (json.messages.length > 0) {
+        // The first fetch brings the history back; only later arrivals chime.
+        if (lastId.current > 0 && !mutedRef.current && json.messages.some((m) => m.sender === 'visitor')) playChime()
         lastId.current = json.messages[json.messages.length - 1]?.id ?? lastId.current
         setMessages((prev) => {
           const known = new Set(prev.map((m) => m.id))
@@ -120,6 +133,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
     const json = (await res.json()) as { message: ClientMessage }
     setMessages((prev) => (prev.some((m) => m.id === json.message.id) ? prev : [...prev, json.message]))
     lastId.current = Math.max(lastId.current, json.message.id)
+    if (!mutedRef.current) playSent()
     onChanged?.()
     return true
   }
@@ -152,6 +166,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onChanged, compac
         {onBack ? <button type="button" aria-label="Back to chats" onClick={onBack}>←</button> : null}
         <h2 title={who}>{who}</h2>
         {conversation && canReply && conversation.status === 'open' ? <button type="button" onClick={endChat}>End chat</button> : null}
+        <MuteButton muted={muted} onToggle={toggleMute} />
         {canManage && !compact ? <button type="button" onClick={remove}>Delete</button> : null}
       </div>
       {conversation && !compact ? (
