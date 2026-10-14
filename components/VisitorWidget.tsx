@@ -35,6 +35,44 @@ type Saved = {
   pushed?: boolean
   /** The claim on this browser's visitor row, once it has checked in. */
   presence?: string
+  /** The visitor muted the new-message sound; it is on until they do. */
+  muted?: boolean
+  /** The newest message we have already chimed for, so a reload never repeats it. */
+  chimed?: number
+}
+
+// A short two-note chime made in the browser, so there is no sound file to host.
+// Browsers only let a page make noise once the visitor has touched it, so the
+// context is made (and woken) on their first tap or key press anywhere.
+let audio: AudioContext | null = null
+function audioContext(): AudioContext | null {
+  if (audio) return audio
+  try {
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (Ctor) audio = new Ctor()
+  } catch { /* no audio here */ }
+  return audio
+}
+function unlockAudio() {
+  const ctx = audioContext()
+  if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {})
+}
+function playChime() {
+  const ctx = audioContext()
+  if (!ctx || ctx.state !== 'running') return
+  const now = ctx.currentTime
+  ;([{ freq: 880, offset: 0 }, { freq: 1174.66, offset: 0.14 }]).forEach(({ freq, offset }) => {
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = freq
+    gain.gain.setValueAtTime(0.0001, now + offset)
+    gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.45)
+    osc.connect(gain).connect(ctx.destination)
+    osc.start(now + offset)
+    osc.stop(now + offset + 0.5)
+  })
 }
 
 function load(): Saved {
@@ -95,7 +133,8 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const allowed = consent === null || chatConsent?.granted === true
 
   const update = useCallback((patch: Partial<Saved> | null) => {
-    const next = patch === null ? {} : { ...savedRef.current, ...patch }
+    // Starting over forgets the chat, never the visitor's wish for quiet.
+    const next = patch === null ? { muted: savedRef.current.muted } : { ...savedRef.current, ...patch }
     savedRef.current = next
     save(next)
     setSaved(next)
@@ -110,6 +149,14 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setName(initial.name ?? '')
     setEmail(initial.email ?? '')
     if (new URLSearchParams(window.location.search).get('chat') === 'open') setOpen(true)
+  }, [])
+
+  // Wake the chime's audio the first time the visitor touches the page.
+  useEffect(() => {
+    const events = ['pointerdown', 'keydown'] as const
+    const wake = () => { unlockAudio(); events.forEach((e) => window.removeEventListener(e, wake)) }
+    events.forEach((e) => window.addEventListener(e, wake))
+    return () => events.forEach((e) => window.removeEventListener(e, wake))
   }, [])
 
   // Anything on the page can open the chat, and so can a notification click.
@@ -219,6 +266,10 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
         setPeeks((prev) => [...prev, ...fresh].slice(-3))
       }
       const latest = fresh[fresh.length - 1]
+      if (latest && latest.id > (savedRef.current.chimed ?? 0)) {
+        if (!savedRef.current.muted) playChime()
+        update({ chimed: latest.id })
+      }
       if (latest && document.hidden && !savedRef.current.pushed && 'Notification' in window && Notification.permission === 'granted') {
         try { new Notification(latest.authorName ? `${latest.authorName} replied` : 'New message', { body: latest.body.slice(0, 160), tag: 'cactus-chat' }) } catch { /* some browsers only allow these from a worker */ }
       }
@@ -391,6 +442,18 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
             <header className="cch-head">
               <h2>{label}</h2>
               {claim && status === 'open' && !ending ? <button type="button" onClick={() => setEnding(true)}>End chat</button> : null}
+              <button
+                type="button"
+                aria-label={saved.muted ? 'Unmute new message sound' : 'Mute new message sound'}
+                aria-pressed={saved.muted === true}
+                title={saved.muted ? 'Sound off - click to turn on' : 'Sound on - click to mute'}
+                onClick={() => { unlockAudio(); if (saved.muted) playChime(); update({ muted: !saved.muted }) }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                  {saved.muted ? <path d="M23 9l-6 6M17 9l6 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14" />}
+                </svg>
+              </button>
               <button type="button" aria-label="Minimise chat" onClick={() => setOpen(false)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
               </button>

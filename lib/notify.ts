@@ -1,4 +1,5 @@
 import { clearAlert, upsertAlert } from '@/lib/notifications/alerts'
+import { pushBellAlert } from '@/lib/push/send'
 import { announceConversationArrived } from '@/lib/conversations/arrived'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { prisma } from '@/lib/db/prisma'
@@ -63,5 +64,22 @@ export async function pushToVisitor(conversationId: string, authorName: string |
     if (outcome.gone) await setPushSubscription(conversationId, null)
   } catch (err) {
     console.error('[chat] could not notify the visitor', err)
+  }
+}
+
+/** A browser notification for the team when somebody new turns up on the site,
+ *  by the same Web Push road the bell uses - so it reaches Safari, Chrome and
+ *  phones with no admin tab open. Pushed straight, with no bell entry: a busy
+ *  day would otherwise bury the bell in visitors who left an hour ago. */
+export async function pushNewVisitor(visitorId: string, device: string | null, path: string, title: string | null): Promise<void> {
+  try {
+    const where = title || path
+    await pushBellAlert({
+      id: `chat-visitor-${visitorId}`,
+      title: `${device ? `A visitor on a ${device.toLowerCase()}` : 'A visitor'} has arrived on the site: ${where}`.slice(0, 160),
+      link: `/inbox?tab=${MODULE_NAME}&visitors=1`,
+    })
+  } catch (err) {
+    console.error('[chat] could not tell the team about a new visitor', err)
   }
 }

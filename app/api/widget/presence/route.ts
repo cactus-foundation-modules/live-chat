@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from 'next/server'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { errorResponse } from '@/lib/utils'
+import { pushNewVisitor } from '@/modules/chat/lib/notify'
 import { getChatSettings } from '@/modules/chat/lib/settings'
 import { getConsentState, mayTrack } from '@/modules/chat/lib/consent'
 import { hashIp, hashSecret, newConversationId, newSecret, visitorConversation } from '@/modules/chat/lib/visitor'
@@ -75,7 +76,11 @@ export async function POST(request: NextRequest) {
     newClaim = `${id}.${secret}`
     // Somebody arriving is as good a moment as any to forget whoever left a week
     // ago, and means a site with no cron secret still tidies up.
-    after(async () => { await pruneVisitors().catch(() => 0) })
+    const arrivedAt = { path, title, device: deviceFrom(request.headers.get('user-agent')) }
+    after(async () => {
+      await pruneVisitors().catch(() => 0)
+      await pushNewVisitor(id, arrivedAt.device, arrivedAt.path, arrivedAt.title)
+    })
   }
 
   const { trail, moved } = extendTrail(await getVisitorTrail(claim.id), { path, title, at: new Date().toISOString() })

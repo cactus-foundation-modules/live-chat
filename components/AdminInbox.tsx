@@ -12,8 +12,8 @@ import type { ClientListedVisitor } from '@/modules/chat/lib/serialise'
 // lists everybody browsing who agreed to the Live chat cookies, so we can see
 // where they are and what is in their basket, and say hello first.
 
-export function AdminInbox({ canReply, canManage, initialId }: { canReply: boolean; canManage: boolean; initialId: string | null }) {
-  const [tab, setTab] = useState<'open' | 'closed' | 'visitors'>('open')
+export function AdminInbox({ canReply, canManage, initialId, initialTab = 'open' }: { canReply: boolean; canManage: boolean; initialId: string | null; initialTab?: 'open' | 'visitors' }) {
+  const [tab, setTab] = useState<'open' | 'closed' | 'visitors'>(initialTab)
   const status = tab === 'closed' ? 'closed' : 'open'
   const [active, setActive] = useState<string | null>(initialId)
   const [visitor, setVisitor] = useState<ClientListedVisitor | null>(null)

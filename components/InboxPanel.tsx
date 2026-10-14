@@ -14,5 +14,5 @@ export async function ChatInboxPanel({ searchParams }: { searchParams?: Record<s
   }
   const [canReply, canManage] = await Promise.all([hasPermission(user, PERM_REPLY), hasPermission(user, PERM_MANAGE)])
   const id = typeof searchParams?.id === 'string' && /^[a-f0-9]{24}$/.test(searchParams.id) ? searchParams.id : null
-  return <AdminInbox canReply={canReply} canManage={canManage} initialId={id} />
+  return <AdminInbox canReply={canReply} canManage={canManage} initialId={id} initialTab={searchParams?.visitors === '1' && !id ? 'visitors' : 'open'} />
 }
