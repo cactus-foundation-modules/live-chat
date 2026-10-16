@@ -18,6 +18,7 @@ import {
 } from './db'
 import { sendAgentReply } from './reply'
 import { syncAgentAlert } from './notify'
+import { linksToHtml } from './links'
 
 // Live chats published as plain data, so the Unified Inbox (or anything else
 // reading core.conversation-provider) can list them beside email and answer
@@ -49,7 +50,7 @@ function toMessage(m: ChatMessage): ConversationMessage {
     direction: m.sender === 'visitor' ? 'in' : m.sender === 'agent' ? 'out' : 'note',
     authorName: m.sender === 'system' ? null : m.authorName,
     text: m.body,
-    html: null,
+    html: linksToHtml(m.body),
     sentAt: m.createdAt,
     attachments: m.attachments.map((a) => ({ filename: a.filename, url: `${API_BASE}/attachments/${a.id}`, contentType: a.contentType })),
   }
@@ -96,7 +97,7 @@ async function byIdentity(identity: { emails: string[] }): Promise<ConversationS
 export const chatConversationProvider: ConversationProvider = {
   label: 'Live chat',
   channel: 'chat',
-  capabilities: { reply: true, markRead: true, byIdentity: true },
+  capabilities: { reply: true, markRead: true, byIdentity: true, markdownLinks: true },
   list,
   thread,
   send,

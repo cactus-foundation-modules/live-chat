@@ -5,6 +5,7 @@ import { CONSENT_CHANGE_EVENT } from '@/lib/consent/gate'
 import type { ConsentBannerConfig, ConsentDecision } from '@/lib/consent/types'
 import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
 import { cleanEmail } from '@/modules/chat/lib/text'
+import { withoutLinks } from '@/modules/chat/lib/links'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent } from '@/modules/chat/lib/consent-client'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
@@ -240,7 +241,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
         update({ chimed: latest.id })
       }
       if (latest && document.hidden && !savedRef.current.pushed && 'Notification' in window && Notification.permission === 'granted') {
-        try { new Notification(latest.authorName ? `${latest.authorName} replied` : 'New message', { body: latest.body.slice(0, 160), tag: 'cactus-chat' }) } catch { /* some browsers only allow these from a worker */ }
+        try { new Notification(latest.authorName ? `${latest.authorName} replied` : 'New message', { body: withoutLinks(latest.body).slice(0, 160), tag: 'cactus-chat' }) } catch { /* some browsers only allow these from a worker */ }
       }
     } catch { /* the next round will catch up */ }
   }, [headers, update])
@@ -481,7 +482,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                   <div key={p.id} style={{ position: 'relative' }}>
                     <button type="button" className="cch-peek" onClick={() => setOpen(true)}>
                       <strong>{p.authorName ?? 'New message'}</strong>
-                      <span>{p.body || (p.attachments[0] ? `📎 ${p.attachments[0].filename}` : '')}</span>
+                      <span>{withoutLinks(p.body) || (p.attachments[0] ? `📎 ${p.attachments[0].filename}` : '')}</span>
                     </button>
                     <button type="button" className="cch-peek-x" aria-label="Dismiss" onClick={() => setPeeks(peeks.filter((x) => x.id !== p.id))}>×</button>
                   </div>

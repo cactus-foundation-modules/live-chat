@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type
 import { createPortal } from 'react-dom'
 import { FILE_ACCEPT, MAX_MESSAGE_CHARS } from '@/modules/chat/lib/constants'
 import { filesProblem } from '@/modules/chat/lib/text'
+import { splitLinks } from '@/modules/chat/lib/links'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
 
 // The pieces every chat surface shares: the visitor's widget, the admin bubble
@@ -176,7 +177,7 @@ export function MessageList({
           <div key={m.id} style={{ display: 'contents' }}>
             {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who} · {timeLabel(m.createdAt)}</div> : null}
             <div className={`cch-msg ${isMine ? 'mine' : 'theirs'}`}>
-              {m.body}
+              <LinkedText text={m.body} />
               {m.attachments.map((a) => (
                 <a key={a.id} className="cch-file" href={a.url} target="_blank" rel="noopener noreferrer">
                   {a.contentType.startsWith('image/') && !a.contentType.includes('heic')
@@ -192,6 +193,20 @@ export function MessageList({
       {children}
       <div ref={end} />
     </div>
+  )
+}
+
+/** A message's words, with `[name](address)` drawn as a link. Elements, never
+ *  markup, so nothing in a message can be anything but text or an anchor. */
+function LinkedText({ text }: { text: string }) {
+  return (
+    <>
+      {splitLinks(text).map((part, i) => (
+        typeof part === 'string'
+          ? <span key={i}>{part}</span>
+          : <a key={i} href={part.url} target="_blank" rel="noopener noreferrer">{part.label}</a>
+      ))}
+    </>
   )
 }
 

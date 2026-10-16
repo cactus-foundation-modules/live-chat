@@ -3,6 +3,7 @@ import { getConversation, insertMessage, markReadByAgents, type ChatMessage } fr
 import { agentName } from './agent'
 import { announce, pushToVisitor, syncAgentAlert } from './notify'
 import { storeFiles } from './attachments'
+import { withoutLinks } from './links'
 
 /** Thrown when a colleague tries to reply to a chat that has ended. */
 export class ChatEndedError extends Error {
@@ -23,7 +24,7 @@ export async function sendAgentReply(conversationId: string, userId: string, bod
   const message = await insertMessage({ conversationId, sender: 'agent', authorUserId: userId, authorName: name, body, attachments })
   await markReadByAgents(conversationId)
   after(async () => {
-    await pushToVisitor(conversationId, name, body || (attachments[0] ? `Sent you ${attachments[0].filename}` : ''))
+    await pushToVisitor(conversationId, name, withoutLinks(body) || (attachments[0] ? `Sent you ${attachments[0].filename}` : ''))
     await syncAgentAlert()
     await announce(conversationId)
   })

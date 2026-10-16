@@ -1,13 +1,14 @@
 import { BLOCKED_EXTENSION_LIST, MAX_ATTACHMENT_BYTES, MAX_FILES_PER_MESSAGE } from './files'
 
 // Pure helpers shared by the routes, the provider and the browser.
+import { withoutLinks } from './links'
 
 const PREVIEW_CHARS = 140
 
 /** One line of a message for a list, or null when there are no words in it. */
 export function previewOf(text: string | null | undefined): string | null {
   if (!text) return null
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = withoutLinks(text).replace(/\s+/g, ' ').trim()
   if (!flat) return null
   return flat.length > PREVIEW_CHARS ? `${flat.slice(0, PREVIEW_CHARS - 1)}…` : flat
 }
