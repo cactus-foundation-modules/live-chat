@@ -78,6 +78,8 @@ export async function pushNewVisitor(visitorId: string, device: string | null, p
       id: `chat-visitor-${visitorId}`,
       title: `${device ? `A visitor on a ${device.toLowerCase()}` : 'A visitor'} has arrived on the site: ${where}`.slice(0, 160),
       link: `/inbox?tab=${MODULE_NAME}&visitors=1`,
+      // Names the kind it files under on Settings > Notifications.
+      dedupeKey: 'chat:visitor-arrived',
     })
   } catch (err) {
     console.error('[chat] could not tell the team about a new visitor', err)
