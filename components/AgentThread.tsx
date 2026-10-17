@@ -6,7 +6,7 @@ import type { ClientConversation, ClientMessage, ClientVisitor } from '@/modules
 import { Composer, MessageList, TypingNote, mergeMessages, messageRequest, readError, timeLabel } from './ui'
 import { spanLabel, VisitorDetails } from './Visitors'
 import { NameOverrideButton } from './NameOverride'
-import { MuteButton, playChime, playSent, useAdminMuted } from './sound'
+import { MuteButton, playSent, startAlert, stopAlert, useAdminMuted } from './sound'
 import { availabilityFromServer, nudgeAdmin, usePolling } from './live'
 
 // One chat from our side, used by both the inbox tab and the bubble on the
@@ -57,7 +57,9 @@ export function useChatList(status: 'open' | 'closed', everyMs: number, opts: { 
     const before = waiting.current
     waiting.current = now
     // Something new since the last look (not the first load): sound it.
-    if (before && !mutedRef.current && [...now].some(([id, at]) => id !== quietRef.current && before.get(id) !== at)) playChime()
+    if (before && !mutedRef.current && [...now].some(([id, at]) => id !== quietRef.current && before.get(id) !== at)) startAlert()
+    // Nothing left waiting on us: nothing left to ring about.
+    if (![...now.keys()].some((id) => id !== quietRef.current)) stopAlert()
   }, [status])
 
   const refresh = usePolling(load, { everyMs, hiddenMs: Math.max(everyMs, 30_000), enabled, key: status })
@@ -205,7 +207,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
     tell.current?.(json.conversation)
     if (json.messages.length > 0) {
       // The first look brings the history back; only later arrivals chime.
-      if (loaded.current && !mutedRef.current && json.messages.some((m) => m.sender === 'visitor' && m.id > lastId.current)) playChime()
+      if (loaded.current && !mutedRef.current && json.messages.some((m) => m.sender === 'visitor' && m.id > lastId.current)) startAlert()
       lastId.current = Math.max(lastId.current, json.messages[json.messages.length - 1]?.id ?? 0)
       setMessages((prev) => mergeMessages(prev, json.messages))
     }
@@ -226,6 +228,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
     // Merged, not appended, and the poll's place left alone: a visitor message
     // that landed just before this one is still fetched on the next look.
     setMessages((prev) => mergeMessages(prev, [json.message]))
+    stopAlert()
     if (!mutedRef.current) playSent()
     nudgeAdmin()
     return true
@@ -299,7 +302,10 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
           <VisitorDetails visitor={visitor} email={conversation?.visitorEmail} hideCurrent />
         </details>
       ) : null}
-      {lostTouch && !gone ? <div className="cch-banner" role="status">Lost touch with the site. Trying again…</div> : null}
+      {visitor && !visitor.online && open && !gone ? (
+        <div className="cch-banner" role="status">{who} has left the site{visitor.currentTitle || visitor.currentPath ? `, last seen on ${visitor.currentTitle || visitor.currentPath}` : ''}. A reply may not reach them until they come back.</div>
+      ) : null}
+      {lostTouch && !gone ?<div className="cch-banner" role="status">Lost touch with the site. Trying again…</div> : null}
       {error ? <div className="cch-error" role="alert" style={{ padding: '6px 14px' }}>{error}</div> : null}
       {gone ? (
         <div className="cch-body"><p className="cch-muted" style={{ margin: 'auto' }}>This chat has been deleted.</p></div>

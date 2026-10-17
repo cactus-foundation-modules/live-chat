@@ -49,6 +49,28 @@ export function playChime() {
   tones([{ freq: 880, offset: 0, length: 0.45, level: 0.18 }, { freq: 1174.66, offset: 0.14, length: 0.45, level: 0.18 }])
 }
 
+// For our own team: a message left unanswered keeps chiming until someone
+// touches the page (a click, key press or tap anywhere) or mutes it, so it
+// cannot be missed from across the room. Starting while already ringing does
+// nothing extra.
+const ALERT_EVERY_MS = 5000
+const ALERT_STOPPERS = ['pointerdown', 'keydown', 'touchstart'] as const
+let alertTimer: ReturnType<typeof setInterval> | null = null
+
+export function stopAlert() {
+  if (alertTimer === null) return
+  clearInterval(alertTimer)
+  alertTimer = null
+  ALERT_STOPPERS.forEach((e) => window.removeEventListener(e, stopAlert))
+}
+
+export function startAlert() {
+  playChime()
+  if (alertTimer !== null) return
+  alertTimer = setInterval(playChime, ALERT_EVERY_MS)
+  ALERT_STOPPERS.forEach((e) => window.addEventListener(e, stopAlert, { passive: true }))
+}
+
 // One short, softer blip: your own message has gone.
 export function playSent() {
   tones([{ freq: 660, offset: 0, length: 0.18, level: 0.1 }])
@@ -110,7 +132,8 @@ export function useAdminMuted(): [boolean, () => void] {
     unlockAudio()
     const next = !loadAdminMuted()
     saveAdminMuted(next)
-    if (!next) playChime()
+    if (next) stopAlert()
+    else playChime()
   }
   return [muted, toggle]
 }
