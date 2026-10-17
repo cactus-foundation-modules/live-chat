@@ -15,7 +15,7 @@ import {
 } from '@/modules/chat/lib/db'
 import { hashIp, hashSecret, newConversationId, newSecret, visitorConversation } from '@/modules/chat/lib/visitor'
 import { messageBody, readMessageForm } from '@/modules/chat/lib/form'
-import { cleanEmail, cleanName, filesProblem } from '@/modules/chat/lib/text'
+import { cleanEmail, cleanName, cleanPhone, filesProblem } from '@/modules/chat/lib/text'
 import { storeFiles, StorageUnavailableError } from '@/modules/chat/lib/attachments'
 import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
 import { clientMessage } from '@/modules/chat/lib/serialise'
@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       tokenHash: hashSecret(secret),
       name: cleanName(form.fields.name),
       email: cleanEmail(form.fields.email),
+      phone: cleanPhone(form.fields.phone),
       pageUrl: page.startsWith('/') ? page : null,
       ipHash,
     })
@@ -107,7 +108,8 @@ export async function POST(request: NextRequest) {
     }
     const name = cleanName(form.fields.name)
     const email = cleanEmail(form.fields.email)
-    if (name || email) await setVisitorDetails(conversation.id, { name, email })
+    const phone = cleanPhone(form.fields.phone)
+    if (name || email || phone) await setVisitorDetails(conversation.id, { name, email, phone })
   }
 
   let attachments

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CONSENT_CHANGE_EVENT } from '@/lib/consent/gate'
 import type { ConsentBannerConfig, ConsentDecision } from '@/lib/consent/types'
 import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, TYPING_IDLE_MS, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
-import { cleanEmail } from '@/modules/chat/lib/text'
+import { cleanEmail, cleanPhone } from '@/modules/chat/lib/text'
 import { withoutLinks } from '@/modules/chat/lib/links'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent } from '@/modules/chat/lib/consent-client'
@@ -30,6 +30,7 @@ type Saved = {
   claim?: string
   name?: string
   email?: string
+  phone?: string
   /** The newest message they have seen, so peeks only show what is new. */
   seen?: number
   /** Whether we have asked about notifications, so we ask once. */
@@ -91,6 +92,8 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const [peeks, setPeeks] = useState<ClientMessage[]>([])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [editing, setEditing] = useState(false)
   const [savingDetails, setSavingDetails] = useState(false)
   const [detailsError, setDetailsError] = useState('')
   const [askNotify, setAskNotify] = useState(false)
@@ -124,6 +127,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setSaved(initial)
     setName(initial.name ?? '')
     setEmail(initial.email ?? '')
+    setPhone(initial.phone ?? '')
     if (new URLSearchParams(window.location.search).get('chat') === 'open') setOpen(true)
     // A page change remounts the window, so a window left open comes back open.
     try { if (sessionStorage.getItem(OPEN_STORAGE_KEY) === '1') setOpen(true) } catch { /* no session storage: it starts closed */ }
@@ -216,12 +220,12 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     update({ claim: `${reply.chat}.${secret}`, seen: 0, pushed: false })
     // Details saved before there was a chat would otherwise wait for their
     // first message; a chat we started gives them somewhere to go now.
-    const { name: knownName, email: knownEmail } = savedRef.current
-    if (knownName || knownEmail) {
+    const { name: knownName, email: knownEmail, phone: knownPhone } = savedRef.current
+    if (knownName || knownEmail || knownPhone) {
       fetch(`${API_BASE}/widget/details`, {
         method: 'POST',
         headers: { [VISITOR_HEADER]: `${reply.chat}.${secret}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ name: knownName || undefined, email: knownEmail || undefined }),
+        body: JSON.stringify({ name: knownName || undefined, email: knownEmail || undefined, phone: knownPhone || undefined }),
       }).catch(() => { /* they ride along with the next message instead */ })
     }
   }, [update])
@@ -325,13 +329,13 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     // Name and email ride along with every message, not just the first, so a
     // visitor who fills them in halfway through is not ignored.
     const res = await fetch(`${API_BASE}/widget/messages`, messageRequest(
-      { body, name: name.trim() || undefined, email: cleanEmail(email) ?? undefined, page: window.location.pathname },
+      { body, name: name.trim() || undefined, email: cleanEmail(email) ?? undefined, phone: cleanPhone(phone) ?? undefined, page: window.location.pathname },
       files,
       headers(),
     ))
     if (!res.ok) throw new Error(await readError(res))
     const json = (await res.json()) as { claim: string | null; message: ClientMessage }
-    const details = { name: name.trim() || savedRef.current.name, email: cleanEmail(email) ?? savedRef.current.email }
+    const details = { name: name.trim() || savedRef.current.name, email: cleanEmail(email) ?? savedRef.current.email, phone: cleanPhone(phone) ?? savedRef.current.phone }
     update(json.claim ? { claim: json.claim, ...details, seen: 0 } : details)
     // Merged rather than appended, and the poll's place left where it was: a
     // reply from us that landed just before this message is still fetched.
@@ -343,15 +347,17 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     return true
   }
 
-  // Saving the name and email box on its own, so details reach us without the
-  // visitor having to send a message first. Whatever is saved drops out of the
-  // box; the box goes once both are in.
+  // Saving the contact box on its own, so details reach us without the visitor
+  // having to send a message first. The same box edits them later: every field
+  // is sent, and one left empty is cleared.
   async function saveDetails() {
-    const nextName = !savedRef.current.name ? name.trim() : ''
-    const typedEmail = !savedRef.current.email ? email.trim() : ''
+    const nextName = name.trim()
+    const typedEmail = email.trim()
     const nextEmail = typedEmail ? cleanEmail(typedEmail) : null
     if (typedEmail && !nextEmail) { setDetailsError('That email address does not look quite right.'); return }
-    if (!nextName && !nextEmail) return
+    const typedPhone = phone.trim()
+    const nextPhone = typedPhone ? cleanPhone(typedPhone) : null
+    if (typedPhone && !nextPhone) { setDetailsError('That phone number does not look quite right.'); return }
     setSavingDetails(true)
     setDetailsError('')
     try {
@@ -359,17 +365,35 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
         const res = await fetch(`${API_BASE}/widget/details`, {
           method: 'POST',
           headers: { ...headers(), 'content-type': 'application/json' },
-          body: JSON.stringify({ name: nextName || undefined, email: nextEmail ?? undefined }),
+          body: JSON.stringify({ name: nextName, email: nextEmail ?? '', phone: nextPhone ?? '' }),
         })
         if (!res.ok) throw new Error(await readError(res))
       }
       // No chat yet: kept here, and sent along with their first message.
-      update({ ...(nextName ? { name: nextName } : {}), ...(nextEmail ? { email: nextEmail } : {}) })
+      update({ name: nextName || undefined, email: nextEmail ?? undefined, phone: nextPhone ?? undefined })
+      // Shown back the way it was stored, so 07332 342 234 reads 07332342234.
+      setName(nextName)
+      setEmail(nextEmail ?? '')
+      setPhone(nextPhone ?? '')
+      setEditing(false)
     } catch (err) {
       setDetailsError(err instanceof Error ? err.message : 'Those details could not be saved. Please try again.')
     } finally {
       setSavingDetails(false)
     }
+  }
+
+  function editDetails() {
+    setDetailsError('')
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    setName(saved.name ?? '')
+    setEmail(saved.email ?? '')
+    setPhone(saved.phone ?? '')
+    setDetailsError('')
+    setEditing(false)
   }
 
   async function enableNotifications() {
@@ -423,7 +447,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   }
 
   function startAgain() {
-    update({ asked: savedRef.current.asked, name: savedRef.current.name, email: savedRef.current.email, presence: savedRef.current.presence, claim: undefined, seen: 0, pushed: false })
+    update({ asked: savedRef.current.asked, name: savedRef.current.name, email: savedRef.current.email, phone: savedRef.current.phone, presence: savedRef.current.presence, claim: undefined, seen: 0, pushed: false })
     setMessages([])
     setEnded(null)
     setStatus('open')
@@ -456,6 +480,25 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
               </button>
             </header>
+            {allowed && status === 'open' ? (
+              <ContactBox
+                online={online}
+                saved={saved}
+                editing={editing || !(saved.name || saved.email || saved.phone)}
+                canCancel={editing}
+                name={name}
+                email={email}
+                phone={phone}
+                busy={savingDetails}
+                error={detailsError}
+                onName={(v) => { setName(v); setDetailsError('') }}
+                onEmail={(v) => { setEmail(v); setDetailsError('') }}
+                onPhone={(v) => { setPhone(v); setDetailsError('') }}
+                onEdit={editDetails}
+                onSave={saveDetails}
+                onCancel={cancelEditing}
+              />
+            ) : null}
             <MessageList messages={messages} mine="visitor" intro={messages.some((m) => m.sender === 'agent') ? null : greeting}>
               {claim && status === 'open' && agentTyping !== null ? <TypingNote who={agentTyping} /> : null}
               {!allowed && chatConsent ? (
@@ -467,19 +510,6 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                   onAllow={allowChat}
                   onSettings={showCookieSettings}
                 />
-              ) : null}
-              {allowed && status === 'open' && !ending && !(saved.name && saved.email) ? (
-                <div className="cch-card">
-                  <p className="cch-muted">{online ? 'Tell us who you are, if you like - it helps us reply by email if you have to dash off.' : 'Leave your email if you would like a reply - we cannot answer straight away.'}</p>
-                  {saved.name ? null : <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" value={name} maxLength={80} onChange={(e) => { setName(e.target.value); setDetailsError('') }} />}
-                  {saved.email ? null : <input className="cch-input" type="email" placeholder="Your email (optional)" aria-label="Your email" value={email} maxLength={254} onChange={(e) => { setEmail(e.target.value); setDetailsError('') }} />}
-                  {detailsError ? <div className="cch-error" role="alert">{detailsError}</div> : null}
-                  {(!saved.name && name.trim()) || (!saved.email && email.trim()) ? (
-                    <div className="cch-row">
-                      <button type="button" className="cch-btn primary" disabled={savingDetails} onClick={saveDetails}>{savingDetails ? 'Saving…' : 'Save'}</button>
-                    </div>
-                  ) : null}
-                </div>
               ) : null}
               {askNotify ? (
                 <div className="cch-card">
@@ -527,6 +557,71 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
       </div>
     </div>
     </BodyPortal>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  )
+}
+
+// Pinned under the header, above the greeting and every message. Empty it is a
+// small form (name with the phone number to its right, then email); once
+// something is saved it shrinks to what we hold, each with a pencil to change it.
+function ContactBox({ online, saved, editing, canCancel, name, email, phone, busy, error, onName, onEmail, onPhone, onEdit, onSave, onCancel }: {
+  online: boolean
+  saved: Saved
+  editing: boolean
+  canCancel: boolean
+  name: string
+  email: string
+  phone: string
+  busy: boolean
+  error: string
+  onName: (v: string) => void
+  onEmail: (v: string) => void
+  onPhone: (v: string) => void
+  onEdit: () => void
+  onSave: () => void
+  onCancel: () => void
+}) {
+  if (!editing) {
+    const items: Array<{ key: string; label: string; value: string }> = []
+    if (saved.name) items.push({ key: 'name', label: 'name', value: saved.name })
+    if (saved.phone) items.push({ key: 'phone', label: 'phone number', value: saved.phone })
+    if (saved.email) items.push({ key: 'email', label: 'email', value: saved.email })
+    return (
+      <div className="cch-contact" aria-label="Your contact details">
+        {items.map((item) => (
+          <span key={item.key} className="cch-contact-item">
+            <span className="cch-contact-value" title={item.value}>{item.value}</span>
+            <button type="button" className="cch-contact-edit" aria-label={`Change your ${item.label}`} title={`Change your ${item.label}`} onClick={onEdit}><PencilIcon /></button>
+          </span>
+        ))}
+        {!saved.name || !saved.phone || !saved.email ? <button type="button" className="cch-contact-add" onClick={onEdit}>Add more details</button> : null}
+      </div>
+    )
+  }
+  return (
+    <form className="cch-contact form" onSubmit={(e) => { e.preventDefault(); onSave() }}>
+      <p className="cch-muted">{online ? 'Tell us who you are, if you like - it helps us reply if you have to dash off.' : 'Leave your email or phone number if you would like a reply - we cannot answer straight away.'}</p>
+      <div className="cch-contact-grid">
+        <input className="cch-input" placeholder="Your name (optional)" aria-label="Your name" autoComplete="name" value={name} maxLength={80} onChange={(e) => onName(e.target.value)} />
+        <input className="cch-input" type="tel" inputMode="tel" placeholder="Phone (optional)" aria-label="Your phone number" autoComplete="tel" value={phone} maxLength={40} onChange={(e) => onPhone(e.target.value)} />
+      </div>
+      <input className="cch-input" type="email" placeholder="Your email (optional)" aria-label="Your email" autoComplete="email" value={email} maxLength={254} onChange={(e) => onEmail(e.target.value)} />
+      {error ? <div className="cch-error" role="alert">{error}</div> : null}
+      {name.trim() || email.trim() || phone.trim() || canCancel ? (
+        <div className="cch-row">
+          <button type="submit" className="cch-btn primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+          {canCancel ? <button type="button" className="cch-btn" disabled={busy} onClick={onCancel}>Cancel</button> : null}
+        </div>
+      ) : null}
+    </form>
   )
 }
 

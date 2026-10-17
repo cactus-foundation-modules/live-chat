@@ -33,7 +33,7 @@ function toSummary(c: ChatConversation): ConversationSummary {
     channel: 'chat',
     subject: c.visitorName ? `Chat with ${c.visitorName}` : 'Live chat',
     preview: c.lastMessagePreview,
-    participant: { name: c.visitorName, email: c.visitorEmail, phone: null },
+    participant: { name: c.visitorName, email: c.visitorEmail, phone: c.visitorPhone },
     lastMessageAt: c.lastMessageAt,
     contentAt: c.updatedAt > c.lastMessageAt ? c.updatedAt : c.lastMessageAt,
     unread: c.unreadForAgents > 0,

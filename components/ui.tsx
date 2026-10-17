@@ -61,6 +61,15 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-system{align-self:center;font-size:12px;color:var(--color-text-muted);text-align:center}
 .cch-file{display:block;margin-top:6px}
 .cch-file img{display:block;max-width:220px;max-height:220px;border-radius:8px}
+.cch-contact{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:8px 14px;background:var(--color-surface);border-bottom:1px solid var(--color-border);font-size:13px;flex:none;position:sticky;top:0;z-index:1}
+.cch-contact.form{flex-direction:column;align-items:stretch;gap:8px}
+.cch-contact p{margin:0}
+.cch-contact-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.cch-contact-item{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-width:0}
+.cch-contact-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-text)}
+.cch-contact-edit{display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--color-text-muted);padding:4px;border-radius:6px;cursor:pointer}
+.cch-contact-edit:hover{background:var(--color-bg-subtle);color:var(--color-text)}
+.cch-contact-add{border:0;background:transparent;color:var(--color-text-muted);padding:0;font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
 .cch-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .cch-card p{margin:0}
 .cch-row{display:flex;gap:8px;flex-wrap:wrap}

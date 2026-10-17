@@ -14,6 +14,7 @@ export type ChatConversation = {
   id: string
   visitorName: string | null
   visitorEmail: string | null
+  visitorPhone: string | null
   status: ChatStatus
   pageUrl: string | null
   /** The visitor row this chat belongs to, when they agreed to be listed. */
@@ -77,6 +78,7 @@ function toConversation(r: Row): ChatConversation {
     id: String(r.id),
     visitorName: (r.visitor_name as string | null) ?? null,
     visitorEmail: (r.visitor_email as string | null) ?? null,
+    visitorPhone: (r.visitor_phone as string | null) ?? null,
     status: r.status === 'closed' ? 'closed' : 'open',
     pageUrl: (r.page_url as string | null) ?? null,
     visitorId: (r.visitor_id as string | null) ?? null,
@@ -131,6 +133,7 @@ export async function createConversation(data: {
   tokenHash: string
   name: string | null
   email: string | null
+  phone?: string | null
   pageUrl: string | null
   ipHash: string | null
   visitorId?: string | null
@@ -139,8 +142,8 @@ export async function createConversation(data: {
   autoStarted?: boolean
 }): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_conversations" ("id", "visitor_token_hash", "visitor_name", "visitor_email", "page_url", "ip_hash", "visitor_id", "started_by", "auto_started")
-    VALUES (${data.id}, ${data.tokenHash}, ${data.name}, ${data.email}, ${data.pageUrl}, ${data.ipHash}, ${data.visitorId ?? null}, ${data.startedBy ?? 'visitor'}, ${data.autoStarted ?? false})
+    INSERT INTO "chat_conversations" ("id", "visitor_token_hash", "visitor_name", "visitor_email", "visitor_phone", "page_url", "ip_hash", "visitor_id", "started_by", "auto_started")
+    VALUES (${data.id}, ${data.tokenHash}, ${data.name}, ${data.email}, ${data.phone ?? null}, ${data.pageUrl}, ${data.ipHash}, ${data.visitorId ?? null}, ${data.startedBy ?? 'visitor'}, ${data.autoStarted ?? false})
   `
 }
 
@@ -227,11 +230,25 @@ export async function listConversationsByEmails(emails: string[]): Promise<ChatC
   return rows.map(toConversation)
 }
 
-export async function setVisitorDetails(id: string, data: { name?: string | null; email?: string | null }): Promise<void> {
+export async function setVisitorDetails(id: string, data: { name?: string | null; email?: string | null; phone?: string | null }): Promise<void> {
   await prisma.$executeRaw`
     UPDATE "chat_conversations" SET
       "visitor_name" = COALESCE(${data.name ?? null}, "visitor_name"),
       "visitor_email" = COALESCE(${data.email ?? null}, "visitor_email"),
+      "visitor_phone" = COALESCE(${data.phone ?? null}, "visitor_phone"),
+      "updated_at" = now()
+    WHERE "id" = ${id}
+  `
+}
+
+/** The visitor editing their own details: a field left out (undefined) stays as
+ *  it was, a field given as null is cleared. */
+export async function replaceVisitorDetails(id: string, data: { name?: string | null; email?: string | null; phone?: string | null }): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "chat_conversations" SET
+      "visitor_name" = CASE WHEN ${data.name !== undefined} THEN ${data.name ?? null} ELSE "visitor_name" END,
+      "visitor_email" = CASE WHEN ${data.email !== undefined} THEN ${data.email ?? null} ELSE "visitor_email" END,
+      "visitor_phone" = CASE WHEN ${data.phone !== undefined} THEN ${data.phone ?? null} ELSE "visitor_phone" END,
       "updated_at" = now()
     WHERE "id" = ${id}
   `

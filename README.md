@@ -25,9 +25,11 @@ own media storage (Backblaze on most sites).
   like and, if they tick the box, have a copy emailed to them, attachments
   linked. Once a chat has ended, from either side, it is ended: nobody can add
   to it, and the visitor starts a fresh one if they have more to say.
-- **Name and email whenever suits.** The optional name and email boxes stay put
-  for the whole chat, so a visitor who decides halfway through that they would
-  like a reply by email can still leave one.
+- **Name, phone and email whenever suits.** An optional contact box is pinned
+  to the top of the chat window: name with the phone number beside it, then
+  email. Once saved it shrinks to what we hold, each with a pencil to change or
+  clear it. Phone numbers can be typed any way (07332 342 234, +44 7332 342 234)
+  and are stored with no spaces (07332342234).
 - **Keeps itself up to date.** The admin chat window never needs a reload:
   new messages, chats starting and ending, unread counts, who is on the site
   and the Online switch all update on their own, at once when you come back to

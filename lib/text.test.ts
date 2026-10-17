@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanEmail, cleanName, fileProblem, filesProblem, previewOf } from './text'
+import { cleanEmail, cleanName, cleanPhone, fileProblem, filesProblem, previewOf } from './text'
 import { CHAT_WORKER_SOURCE } from './worker'
 
 describe('previewOf', () => {
@@ -7,6 +7,27 @@ describe('previewOf', () => {
     expect(previewOf('  hello\n\nthere  ')).toBe('hello there')
     expect(previewOf('x'.repeat(200))?.length).toBe(140)
     expect(previewOf('   ')).toBeNull()
+  })
+})
+
+describe('cleanPhone', () => {
+  it('strips spaces and punctuation', () => {
+    expect(cleanPhone('07332 342 234')).toBe('07332342234')
+    expect(cleanPhone('(07332) 342-234')).toBe('07332342234')
+  })
+  it('turns a UK international number into its 0 form', () => {
+    expect(cleanPhone('+447332 342 234')).toBe('07332342234')
+    expect(cleanPhone('+44 (0)7332 342234')).toBe('07332342234')
+    expect(cleanPhone('00447332342234')).toBe('07332342234')
+    expect(cleanPhone('447332342234')).toBe('07332342234')
+  })
+  it('keeps another country\'s code', () => {
+    expect(cleanPhone('+1 415 555 2671')).toBe('+14155552671')
+  })
+  it('refuses what is not a number', () => {
+    expect(cleanPhone('call me')).toBeNull()
+    expect(cleanPhone('0733')).toBeNull()
+    expect(cleanPhone(42)).toBeNull()
   })
 })
 

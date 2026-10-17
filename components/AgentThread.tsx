@@ -281,6 +281,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
       {conversation && !compact ? (
         <div className="cch-muted" style={{ padding: '6px 14px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
           {conversation.visitorEmail ? <><a href={`mailto:${conversation.visitorEmail}`}>{conversation.visitorEmail}</a> · </> : null}
+          {conversation.visitorPhone ? <><a href={`tel:${conversation.visitorPhone}`}>{conversation.visitorPhone}</a> · </> : null}
           {conversation.pageUrl ? <>started on <a href={conversation.pageUrl} target="_blank" rel="noopener noreferrer">{conversation.pageUrl}</a> · </> : null}
           {conversation.notifications ? 'notifications on' : 'notifications off'}
         </div>

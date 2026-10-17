@@ -21,6 +21,7 @@ export type ClientConversation = {
   id: string
   visitorName: string | null
   visitorEmail: string | null
+  visitorPhone: string | null
   status: 'open' | 'closed'
   pageUrl: string | null
   unread: number
@@ -86,6 +87,7 @@ export function clientConversation(c: ChatConversation): ClientConversation {
     id: c.id,
     visitorName: c.visitorName,
     visitorEmail: c.visitorEmail,
+    visitorPhone: c.visitorPhone,
     status: c.status,
     pageUrl: c.pageUrl,
     unread: c.unreadForAgents,

@@ -27,6 +27,29 @@ export function cleanName(value: unknown): string | null {
   return name || null
 }
 
+/**
+ * A phone number in whatever shape a person types it, tidied to digits with no
+ * spaces: "07332 342 234", "+44 7332 342 234" and "+44 (0)7332 342234" all come
+ * back as 07332342234. A UK number always comes back in its 0 form; any other
+ * country keeps its + and country code. Null when it cannot be a phone number.
+ */
+export function cleanPhone(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  let text = value.trim()
+  if (!text || text.length > 40) return null
+  if (/[^\d\s+().\-]/.test(text)) return null
+  text = text.replace(/\(0\)/g, '')
+  let digits = text.replace(/\D/g, '')
+  const international = text.startsWith('+') || digits.startsWith('00')
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  if (international || (digits.startsWith('44') && digits.length === 12)) {
+    if (digits.startsWith('44')) digits = `0${digits.slice(2)}`
+    else return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : null
+  }
+  if (digits.startsWith('0') && (digits.length < 10 || digits.length > 11)) return null
+  return digits.length >= 7 && digits.length <= 15 ? digits : null
+}
+
 /** Why a file cannot be attached, in words a visitor can act on, or null. */
 export function fileProblem(file: { name: string; size: number }): string | null {
   if (file.size <= 0) return `"${file.name}" is empty.`
