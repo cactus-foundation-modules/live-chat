@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CONSENT_CHANGE_EVENT } from '@/lib/consent/gate'
 import type { ConsentBannerConfig, ConsentDecision } from '@/lib/consent/types'
-import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, TYPING_IDLE_MS, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
+import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, PRESENCE_HEADER, TYPING_IDLE_MS, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
 import { cleanEmail, cleanPhone } from '@/modules/chat/lib/text'
 import { withoutLinks } from '@/modules/chat/lib/links'
 import { publishUnread } from '@/modules/chat/lib/unread'
@@ -331,7 +331,9 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     const res = await fetch(`${API_BASE}/widget/messages`, messageRequest(
       { body, name: name.trim() || undefined, email: cleanEmail(email) ?? undefined, phone: cleanPhone(phone) ?? undefined, page: window.location.pathname },
       files,
-      headers(),
+      // The visitor row's claim too, so a chat that starts now is tied to the
+      // visitor at once instead of at their next check-in.
+      savedRef.current.presence ? { ...headers(), [PRESENCE_HEADER]: savedRef.current.presence } : headers(),
     ))
     if (!res.ok) throw new Error(await readError(res))
     const json = (await res.json()) as { claim: string | null; message: ClientMessage }
