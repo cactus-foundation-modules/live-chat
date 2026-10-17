@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CONSENT_CHANGE_EVENT } from '@/lib/consent/gate'
 import type { ConsentBannerConfig, ConsentDecision } from '@/lib/consent/types'
-import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
+import { API_BASE, CHAT_OPEN_EVENT, CONSENT_CATEGORY, TYPING_IDLE_MS, VISITOR_HEADER, VISITOR_STORAGE_KEY } from '@/modules/chat/lib/constants'
 import { cleanEmail } from '@/modules/chat/lib/text'
 import { withoutLinks } from '@/modules/chat/lib/links'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent } from '@/modules/chat/lib/consent-client'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
-import { BodyPortal, ChatStyles, Composer, MessageList, messageRequest, readError } from './ui'
+import { BodyPortal, ChatStyles, Composer, MessageList, TypingNote, mergeMessages, messageRequest, readError } from './ui'
 import { playChime, playSent, unlockAudio } from './sound'
 import { useCartDrawerDodge } from './cart-dock'
 import { forgetPresence, usePresence, type PresenceReply } from './presence'
@@ -98,6 +98,9 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const [granting, setGranting] = useState(false)
   const reopenOnGrant = useRef(false)
   const lastId = useRef(0)
+  const typedAt = useRef(0)
+  // Whoever on our side is typing: a name, '' when unnamed, null when nobody.
+  const [agentTyping, setAgentTyping] = useState<string | null>(null)
   const savedRef = useRef<Saved>({})
   // Nothing is stored, fetched or checked in until this is true.
   const allowed = consent === null || chatConsent?.granted === true
@@ -214,18 +217,19 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
   const poll = useCallback(async (seen: boolean) => {
     if (!savedRef.current.claim) return
     try {
-      const res = await fetch(`${API_BASE}/widget/messages?after=${lastId.current}${seen ? '&seen=1' : ''}`, { headers: headers(), cache: 'no-store' })
+      // Typing since the last ask (only while the window is open and in front):
+      // the team sees "typing…" on their next look.
+      const typing = seen && Date.now() - typedAt.current < TYPING_IDLE_MS
+      const res = await fetch(`${API_BASE}/widget/messages?after=${lastId.current}${seen ? '&seen=1' : ''}${typing ? '&typing=1' : ''}`, { headers: headers(), cache: 'no-store' })
       if (res.status === 404) { update(null); setMessages([]); lastId.current = 0; return }
       if (!res.ok) return
-      const json = (await res.json()) as { online?: boolean; status: 'open' | 'closed'; messages: ClientMessage[] }
+      const json = (await res.json()) as { online?: boolean; status: 'open' | 'closed'; typing?: string | null; messages: ClientMessage[] }
       if (typeof json.online === 'boolean') setOnline(json.online)
       setStatus(json.status)
+      setAgentTyping(json.status === 'open' && typeof json.typing === 'string' ? json.typing : null)
       if (json.messages.length === 0) return
-      lastId.current = json.messages[json.messages.length - 1]?.id ?? lastId.current
-      setMessages((prev) => {
-        const known = new Set(prev.map((m) => m.id))
-        return [...prev, ...json.messages.filter((m) => !known.has(m.id))]
-      })
+      lastId.current = Math.max(lastId.current, json.messages[json.messages.length - 1]?.id ?? 0)
+      setMessages((prev) => mergeMessages(prev, json.messages))
       const fresh = json.messages.filter((m) => m.sender === 'agent' && m.id > (savedRef.current.seen ?? 0))
       if (fresh.length === 0) return
       if (seen) {
@@ -308,8 +312,10 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     const json = (await res.json()) as { claim: string | null; message: ClientMessage }
     const details = { name: name.trim() || savedRef.current.name, email: cleanEmail(email) ?? savedRef.current.email }
     update(json.claim ? { claim: json.claim, ...details, seen: 0 } : details)
-    setMessages((prev) => [...prev, json.message])
-    lastId.current = Math.max(lastId.current, json.message.id)
+    // Merged rather than appended, and the poll's place left where it was: a
+    // reply from us that landed just before this message is still fetched.
+    setMessages((prev) => mergeMessages(prev, [json.message]))
+    typedAt.current = 0
     setStatus('open')
     if (!savedRef.current.muted) playSent()
     if (!savedRef.current.asked && 'Notification' in window && Notification.permission === 'default') setAskNotify(true)
@@ -430,6 +436,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
               </button>
             </header>
             <MessageList messages={messages} mine="visitor" intro={greeting}>
+              {claim && status === 'open' && agentTyping !== null ? <TypingNote who={agentTyping} /> : null}
               {!allowed && chatConsent ? (
                 <ConsentCard
                   declined={chatConsent.decided}
@@ -472,7 +479,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                 </div>
               ) : null}
             </MessageList>
-            {status === 'closed' && claim ? null : <Composer onSend={send} autoFocus />}
+            {status === 'closed' && claim ? null : <Composer onSend={send} autoFocus draftKey="visitor" onTyping={() => { typedAt.current = Date.now() }} />}
           </section>
         ) : (
           <>

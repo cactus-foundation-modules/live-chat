@@ -150,4 +150,84 @@ suite('visitors leaving the site, against a real database', () => {
     await agent.setAgentNameOverride('u1', '   ')
     expect(await agent.getAgentNameOverride('u1')).toBeNull()
   })
+
+  it('lists chats with who is waiting, who is here, typing on both sides, and the visitor panel', async () => {
+    const db = await import('./db')
+    const chatId = 'c0ffee00c0ffee00c0ffee00'
+    await db.createConversation({ id: chatId, tokenHash: 'y'.repeat(64), name: 'Pat', email: null, pageUrl: '/desks', ipHash: null, visitorId: id })
+    await visitors.recordCheckIn(id, checkIn)
+
+    // Nothing said yet: nothing waiting.
+    let row = (await db.listConversations('open')).find((c) => c.id === chatId)
+    expect(row?.waitingSince).toBeNull()
+    expect(row?.visitorOnline).toBe(true)
+
+    // Two from the visitor: waiting since the first of them.
+    const first = await db.insertMessage({ conversationId: chatId, sender: 'visitor', body: 'Hello?' })
+    await db.insertMessage({ conversationId: chatId, sender: 'visitor', body: 'Anyone there?' })
+    row = (await db.listConversations('open')).find((c) => c.id === chatId)
+    expect(row?.waitingSince?.getTime()).toBe(first.createdAt.getTime())
+    expect(row?.unreadForAgents).toBe(2)
+
+    // Typing on both sides, each cleared by that side's own message.
+    await db.stampTyping(chatId, 'visitor')
+    await db.stampTyping(chatId, 'agent', 'Sam')
+    let one = await db.getConversation(chatId)
+    expect(one?.visitorTyping).toBe(true)
+    expect(one?.agentTyping).toBe('Sam')
+    expect(one?.waitingSince).toBeNull()
+    expect(one?.visitorOnline).toBeNull()
+
+    await db.insertMessage({ conversationId: chatId, sender: 'agent', authorName: 'Sam', body: 'Here!' })
+    one = await db.getConversation(chatId)
+    expect(one?.agentTyping).toBeNull()
+    expect(one?.visitorTyping).toBe(true)
+    expect(one?.unreadForVisitor).toBe(1)
+    row = (await db.listConversations('open')).find((c) => c.id === chatId)
+    expect(row?.waitingSince).toBeNull()
+
+    await db.insertMessage({ conversationId: chatId, sender: 'visitor', body: 'Lovely' })
+    one = await db.getConversation(chatId)
+    expect(one?.visitorTyping).toBe(false)
+
+    // The visitor panel follows the chat, and leaving shows in the list.
+    const listed = await visitors.getListedVisitor(id)
+    expect(listed?.conversationId).toBe(chatId)
+    expect(listed?.conversationStatus).toBe('open')
+    expect(listed?.visitorName).toBe('Pat')
+    await visitors.markVisitorLeft(id)
+    row = (await db.listConversations('open')).find((c) => c.id === chatId)
+    expect(row?.visitorOnline).toBe(false)
+    expect(await visitors.getListedVisitor(id)).not.toBeNull()
+
+    // An ended chat takes no typing stamp.
+    await db.setStatus(chatId, 'closed')
+    await db.stampTyping(chatId, 'visitor')
+    expect((await db.getConversation(chatId))?.visitorTyping).toBe(false)
+    expect((await db.listConversations('closed')).map((c) => c.id)).toContain(chatId)
+  })
+
+  it('lists an untouched automatic chat only while its visitor is on the site', async () => {
+    const db = await import('./db')
+    const auto = 'a070a070a070a070a070a070'
+    const listedOpen = async () => (await db.listConversations('open')).map((c) => c.id)
+    await visitors.recordCheckIn(id, checkIn)
+    await db.createConversation({ id: auto, tokenHash: 'z'.repeat(64), name: null, email: null, pageUrl: '/desks', ipHash: null, visitorId: id, startedBy: 'agent', autoStarted: true })
+    await db.insertMessage({ conversationId: auto, sender: 'agent', authorName: 'Our team', body: 'Welcome!' })
+    expect(await listedOpen()).toContain(auto)
+
+    // They leave without a word: out of the list, but the chat is kept.
+    await visitors.markVisitorLeft(id)
+    expect(await listedOpen()).not.toContain(auto)
+    expect(await db.getConversation(auto)).not.toBeNull()
+
+    // They come back: in again.
+    await visitors.recordCheckIn(id, checkIn)
+    expect(await listedOpen()).toContain(auto)
+
+    // A colleague's reply makes it a real chat, listed after they leave too.
+    await db.insertMessage({ conversationId: auto, sender: 'agent', authorUserId: 'u1', authorName: 'Sam', body: 'Anything I can help with?' })
+    await visitors.markVisitorLeft(id)
+    expect(await listedOpen()).toContain(auto)
+  })
 })

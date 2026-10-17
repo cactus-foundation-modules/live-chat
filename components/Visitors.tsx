@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { API_BASE } from '@/modules/chat/lib/constants'
 import type { ClientListedVisitor, ClientMessage, ClientVisitor } from '@/modules/chat/lib/serialise'
 import { Composer, messageRequest, readError, timeLabel } from './ui'
+import { nudgeAdmin, usePolling } from './live'
 
 // Who is on the site right now, from our side: used by the inbox tab and by the
 // bubble a signed-in colleague sees on the site. Only visitors who said yes to
@@ -16,27 +17,16 @@ export function useVisitors(enabled: boolean, everyMs: number) {
   const [reason, setReason] = useState<VisitorsReason>(null)
   const [loaded, setLoaded] = useState(false)
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/visitors`, { cache: 'no-store' })
-      if (!res.ok) return
-      const json = (await res.json()) as { visitors: ClientListedVisitor[]; reason: VisitorsReason }
-      setVisitors(json.visitors)
-      setReason(json.reason)
-      setLoaded(true)
-    } catch { /* next round */ }
+  const load = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/admin/visitors`, { cache: 'no-store' })
+    if (!res.ok) return
+    const json = (await res.json()) as { visitors: ClientListedVisitor[]; reason: VisitorsReason }
+    setVisitors(json.visitors)
+    setReason(json.reason)
+    setLoaded(true)
   }, [])
 
-  useEffect(() => {
-    if (!enabled) return
-    let timer: ReturnType<typeof setTimeout>
-    const tick = async () => {
-      await refresh()
-      timer = setTimeout(tick, document.hidden ? Math.max(everyMs, 30_000) : everyMs)
-    }
-    void tick()
-    return () => clearTimeout(timer)
-  }, [enabled, refresh, everyMs])
+  const refresh = usePolling(load, { everyMs, hiddenMs: Math.max(everyMs, 30_000), enabled })
 
   return { visitors, reason, loaded, refresh }
 }
@@ -90,7 +80,7 @@ export function VisitorList({ visitors, reason, loaded, activeId, onPick }: {
           onClick={() => onPick(v)}
         >
           <div className="cch-item-top">
-            <span>{visitorLabel(v)}</span>
+            <span className="cch-item-name">{visitorLabel(v)}</span>
             <span className="cch-item-tags">
               {v.conversationStatus === 'open' ? <span className="cch-tag">Chatting</span> : null}
               {v.cart ? <span className="cch-tag">Basket {v.cart.reduce((n, l) => n + l.quantity, 0)}</span> : null}
@@ -159,48 +149,56 @@ export function VisitorPanel({ visitor: listed, canReply, onBack, onChat, compac
   onChat: (conversationId: string) => void
   compact?: boolean
 }) {
-  const [visitor, setVisitor] = useState<ClientVisitor>(listed)
+  // Starts from the list's copy and keeps itself current, chat included: a
+  // visitor who starts chatting while the panel is open is shown as chatting,
+  // and the hello box gives way to their chat.
+  const [visitor, setVisitor] = useState<ClientListedVisitor>(listed)
   const [gone, setGone] = useState(false)
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>
-    let live = true
-    const tick = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/admin/visitors/${listed.id}`, { cache: 'no-store' })
-        if (res.status === 404 && live) setGone(true)
-        if (res.ok && live) setVisitor(((await res.json()) as { visitor: ClientVisitor }).visitor)
-      } catch { /* next round */ }
-      if (live) timer = setTimeout(tick, document.hidden ? 30_000 : 5_000)
-    }
-    timer = setTimeout(tick, 5_000)
-    return () => { live = false; clearTimeout(timer) }
+  const load = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/admin/visitors/${listed.id}`, { cache: 'no-store' })
+    if (res.status === 404) { setGone(true); return }
+    if (!res.ok) return
+    setGone(false)
+    setVisitor(((await res.json()) as { visitor: ClientListedVisitor }).visitor)
   }, [listed.id])
+  usePolling(load, { everyMs: 5_000, hiddenMs: 30_000, key: listed.id })
 
   async function sayHello(body: string, files: File[]): Promise<boolean> {
     const res = await fetch(`${API_BASE}/admin/visitors/${listed.id}/chat`, messageRequest({ body }, files))
     if (!res.ok) throw new Error(await readError(res))
     const json = (await res.json()) as { conversationId: string; message: ClientMessage }
+    nudgeAdmin()
     onChat(json.conversationId)
     return true
   }
 
-  const chatting = listed.conversationStatus === 'open' && listed.conversationId
+  const chatting = visitor.conversationStatus === 'open' && visitor.conversationId
+  const label = visitorLabel(visitor)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div className="cch-head" style={compact ? undefined : { background: 'var(--color-surface)', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)' }}>
         <button type="button" aria-label="Back to visitors" onClick={onBack}>←</button>
-        <h2 title={visitorLabel(listed)}>{visitorLabel(listed)}</h2>
-        {listed.conversationId ? <button type="button" onClick={() => onChat(listed.conversationId!)}>{chatting ? 'Open chat' : 'Last chat'}</button> : null}
+        <h2 title={label}>{label}</h2>
+        {visitor.conversationId ? (
+          <button type="button" onClick={() => onChat(visitor.conversationId!)}>
+            {chatting ? 'Open chat' : 'Last chat'}{visitor.unread > 0 ? ` (${visitor.unread})` : ''}
+          </button>
+        ) : null}
       </div>
       <div className="cch-body">
         {gone ? <p className="cch-muted">This visitor has left and their trail has been cleared.</p> : <VisitorDetails visitor={visitor} />}
       </div>
       {canReply && !gone ? (
         chatting
-          ? <div className="cch-muted" style={footNote}>Already chatting with you - open the chat to reply.</div>
+          ? (
+            <div className="cch-muted" style={footNote}>
+              Already chatting with you.{' '}
+              <button type="button" className="cch-btn primary" style={{ marginLeft: 6 }} onClick={() => onChat(visitor.conversationId!)}>Open the chat</button>
+            </div>
+          )
           : visitor.online
-            ? <Composer onSend={sayHello} placeholder="Say hello first…" />
+            ? <Composer onSend={sayHello} placeholder="Say hello first…" draftKey={`hello:${listed.id}`} />
             : <div className="cch-muted" style={footNote}>They have left the site, so there is nobody to say hello to.</div>
       ) : null}
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { FILE_ACCEPT, MAX_MESSAGE_CHARS } from '@/modules/chat/lib/constants'
 import { filesProblem } from '@/modules/chat/lib/text'
@@ -112,7 +112,36 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-about summary{cursor:pointer;padding:6px 14px;font-size:13px;color:var(--color-text-secondary)}
 .cch-about[open] summary{border-bottom:1px solid var(--color-border)}
 .cch-about .cch-visitor{padding:10px 14px;max-height:240px;overflow-y:auto}
-.cch-item.unread .cch-item-top span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:999px;background:var(--color-primary);margin-right:6px;vertical-align:middle}
+.cch-item.unread .cch-item-name::before{content:'';display:inline-block;width:8px;height:8px;border-radius:999px;background:var(--color-primary);margin-right:6px;vertical-align:middle}
+.cch-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cch-item-name .cch-presence{margin-right:6px}
+.cch-item.unread .cch-item-preview{color:var(--color-text);font-weight:600}
+.cch-item-preview em{font-style:normal;color:var(--color-primary)}
+.cch-count{min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--color-primary);color:var(--color-on-primary);font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.cch-wait{display:inline-block;margin-top:4px;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;background:var(--color-warning-bg);color:var(--color-text);border:1px solid var(--color-border)}
+.cch-typing{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--color-text-secondary);padding:6px 12px;border-radius:14px;background:var(--color-surface);border:1px solid var(--color-border)}
+.cch-dots{display:inline-flex;gap:3px}
+.cch-dots i{width:6px;height:6px;border-radius:999px;background:currentColor;opacity:.35;animation:cch-dot 1.2s infinite ease-in-out}
+.cch-dots i:nth-child(2){animation-delay:.2s}
+.cch-dots i:nth-child(3){animation-delay:.4s}
+@keyframes cch-dot{0%,80%,100%{opacity:.35;transform:none}40%{opacity:1;transform:translateY(-2px)}}
+.cch-receipt{margin-top:-4px}
+.cch-jump{position:sticky;bottom:4px;align-self:center;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:6px 12px;background:var(--color-primary);color:var(--color-on-primary);font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.cch-jump:hover{background:var(--color-primary-hover)}
+.cch-composer.dragging{outline:2px dashed var(--color-primary);outline-offset:-4px}
+.cch-spinner{width:16px;height:16px;border-radius:999px;border:2px solid currentColor;border-right-color:transparent;animation:cch-spin .8s linear infinite}
+@keyframes cch-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.cch-dots i,.cch-spinner{animation:none}.cch-dots i{opacity:.7}}
+.cch-banner{padding:6px 14px;font-size:13px;border-bottom:1px solid var(--color-border);background:var(--color-warning-bg);color:var(--color-text)}
+.cch-head .cch-back-count{margin-left:4px}
+.cch-search{margin:8px 10px 0;width:calc(100% - 20px);padding:6px 10px}
+.cch-inbox{display:flex;border:1px solid var(--color-border);border-radius:12px;overflow:hidden;height:calc(100vh - 220px);min-height:420px;background:var(--color-surface)}
+.cch-inbox-side{width:320px;max-width:40%;display:flex;flex-direction:column;border-right:1px solid var(--color-border);min-width:0;background:var(--color-surface)}
+.cch-inbox-main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--color-bg-subtle)}
+.cch-inbox-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px;border-bottom:1px solid var(--color-border)}
+.cch-inbox-tabs .cch-btn{padding:5px 10px;font-size:14px}
+.cch-inbox-empty{margin:auto;padding:24px;text-align:center}
+@media (max-width:720px){.cch-inbox{height:calc(100dvh - 170px)}.cch-inbox-side{width:100%;max-width:none;border-right:0}.cch-inbox[data-pane=main] .cch-inbox-side{display:none}.cch-inbox:not([data-pane=main]) .cch-inbox-main{display:none}}
 `
 
 const noSubscribe = () => () => {}
@@ -147,51 +176,125 @@ export async function readError(res: Response): Promise<string> {
   return json?.error ?? 'Something went wrong. Please try again.'
 }
 
+/** Two runs of messages as one, by id, oldest first - whichever order a reply
+ *  and a poll carrying the same message came back in. */
+export function mergeMessages(prev: ClientMessage[], incoming: ClientMessage[]): ClientMessage[] {
+  if (incoming.length === 0) return prev
+  const known = new Set(prev.map((m) => m.id))
+  const added = incoming.filter((m) => !known.has(m.id))
+  if (added.length === 0) return prev
+  return [...prev, ...added].sort((a, b) => a.id - b.id)
+}
+
+/** "Sam is typing…", with three dots that breathe (still for anybody who asked
+ *  for less motion). */
+export function TypingNote({ who }: { who: string }) {
+  return (
+    <div className="cch-typing" role="status">
+      <span className="cch-dots" aria-hidden="true"><i /><i /><i /></span>
+      {who ? `${who} is typing…` : 'Typing…'}
+    </div>
+  )
+}
+
+const STUCK_PX = 48
+
 /** Messages in order, oldest first. `mine` says which side is drawn on the
- *  right: the visitor's own words in their widget, ours in the admin's. */
+ *  right: the visitor's own words in their widget, ours in the admin's.
+ *
+ *  It follows the newest message while the reader is at the bottom, and leaves
+ *  them be when they have scrolled up to read something - with a button to
+ *  jump down when something new arrives meanwhile. Pictures that finish loading
+ *  after the scroll keep the bottom in view too. */
 export function MessageList({
   messages,
   mine,
   intro,
   children,
+  theirName,
+  receipt,
 }: {
   messages: ClientMessage[]
   mine: 'visitor' | 'agent'
   intro?: string | null
   children?: React.ReactNode
+  /** What to call the visitor on the team's side. */
+  theirName?: string
+  /** A small line under one message: "Seen", "Sent". */
+  receipt?: { id: number; text: string } | null
 }) {
-  const end = useRef<HTMLDivElement>(null)
-  const last = messages[messages.length - 1]?.id ?? 0
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [last, children])
+  const body = useRef<HTMLDivElement>(null)
+  const stuck = useRef(true)
+  const newest = useRef(0)
+  const drawnLast = useRef(0)
+  const [atBottom, setAtBottom] = useState(true)
+  const [seenId, setSeenId] = useState(0)
+  const last = messages[messages.length - 1]
+  const lastId = last?.id ?? 0
+  const lastMine = last?.sender === mine
+
+  const toBottom = useCallback(() => {
+    const el = body.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    stuck.current = true
+  }, [])
+
+  useEffect(() => { newest.current = lastId }, [lastId])
+
+  // Every render may have added something (a message, a card, "typing…"): stay
+  // at the bottom if that is where the reader was, or if they just sent it.
+  useLayoutEffect(() => {
+    const grew = lastId !== drawnLast.current
+    drawnLast.current = lastId
+    if (stuck.current || (grew && lastMine)) toBottom()
+  })
+
+  function onScroll() {
+    const el = body.current
+    if (!el) return
+    const at = el.scrollHeight - el.scrollTop - el.clientHeight < STUCK_PX
+    stuck.current = at
+    setAtBottom(at)
+    if (at) setSeenId(newest.current)
+  }
+
+  const showJump = !atBottom && lastId > seenId && !lastMine && last?.sender !== 'system'
 
   return (
-    <div className="cch-body" role="log" aria-live="polite">
+    <div className="cch-body" role="log" aria-live="polite" ref={body} onScroll={onScroll}>
       {intro ? <div className="cch-msg theirs">{intro}</div> : null}
       {messages.map((m, i) => {
         if (m.sender === 'system') return <div key={m.id} className="cch-system">{m.body}</div>
         const isMine = m.sender === mine
         const prev = messages[i - 1]
-        const showMeta = !prev || prev.sender !== m.sender || new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() > 5 * 60_000
-        const who = m.sender === 'visitor' ? (mine === 'visitor' ? 'You' : 'Visitor') : (m.authorName ?? 'Us')
+        const showMeta = !prev || prev.sender !== m.sender || (prev.authorName ?? '') !== (m.authorName ?? '') || new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() > 5 * 60_000
+        const who = m.sender === 'visitor' ? (mine === 'visitor' ? 'You' : (theirName || 'Visitor')) : (m.authorName ?? 'Us')
         return (
           <div key={m.id} style={{ display: 'contents' }}>
-            {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who} · {timeLabel(m.createdAt)}</div> : null}
+            {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who} · <time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString('en-GB')}>{timeLabel(m.createdAt)}</time></div> : null}
             <div className={`cch-msg ${isMine ? 'mine' : 'theirs'}`}>
               <LinkedText text={m.body} />
               {m.attachments.map((a) => (
                 <a key={a.id} className="cch-file" href={a.url} target="_blank" rel="noopener noreferrer">
                   {a.contentType.startsWith('image/') && !a.contentType.includes('heic')
                     // eslint-disable-next-line @next/next/no-img-element -- a private, signed file; next/image cannot optimise it
-                    ? <img src={a.url} alt={a.filename} loading="lazy" />
+                    ? <img src={a.url} alt={a.filename} loading="lazy" onLoad={() => { if (stuck.current) toBottom() }} />
                     : <>📎 {a.filename}</>}
                 </a>
               ))}
             </div>
+            {receipt && receipt.id === m.id ? <div className={`cch-meta cch-receipt${isMine ? ' mine' : ''}`}>{receipt.text}</div> : null}
           </div>
         )
       })}
       {children}
-      <div ref={end} />
+      {showJump ? (
+        <button type="button" className="cch-jump" onClick={toBottom}>
+          New message
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -210,25 +313,75 @@ function LinkedText({ text }: { text: string }) {
   )
 }
 
-/** The writing box: words, up to a few files, Enter to send. */
+// What was typed and not sent yet, per chat, for this tab: switching to another
+// chat and back, or the window being shut and opened, loses nothing.
+const DRAFT_PREFIX = 'cactus-chat-draft:'
+function readDraft(key: string | undefined): string {
+  if (!key || typeof window === 'undefined') return ''
+  try { return sessionStorage.getItem(DRAFT_PREFIX + key) ?? '' } catch { return '' }
+}
+function writeDraft(key: string | undefined, value: string) {
+  if (!key) return
+  try {
+    if (value) sessionStorage.setItem(DRAFT_PREFIX + key, value)
+    else sessionStorage.removeItem(DRAFT_PREFIX + key)
+  } catch { /* the draft just lasts as long as the box */ }
+}
+
+const COMPOSER_MAX_PX = 140
+
+/** The writing box: words, up to a few files (picked, pasted or dropped), Enter
+ *  to send, Shift+Enter for a new line. The box stays usable while a message
+ *  goes, and anything typed meanwhile is kept. */
 export function Composer({
   onSend,
   disabled,
   placeholder,
   allowFiles = true,
   autoFocus,
+  draftKey,
+  onTyping,
 }: {
   onSend: (body: string, files: File[]) => Promise<boolean>
   disabled?: boolean
   placeholder?: string
   allowFiles?: boolean
   autoFocus?: boolean
+  /** Keeps the unsent words for this tab under this name. */
+  draftKey?: string
+  /** Called as they type, so the other side can be told. */
+  onTyping?: () => void
 }) {
-  const [body, setBody] = useState('')
+  const [body, setBodyState] = useState(() => readDraft(draftKey))
   const [files, setFiles] = useState<File[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
+  const box = useRef<HTMLTextAreaElement>(null)
+
+  const setBody = useCallback((next: string | ((cur: string) => string)) => {
+    setBodyState((cur) => {
+      const value = typeof next === 'function' ? next(cur) : next
+      writeDraft(draftKey, value)
+      return value
+    })
+  }, [draftKey])
+
+  // Grows with what is typed, up to a few lines, then scrolls.
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight + 2, COMPOSER_MAX_PX)}px`
+  }, [body])
+
+  function addFiles(picked: File[]) {
+    if (!allowFiles || picked.length === 0) return
+    const next = [...files, ...picked]
+    setFiles(next)
+    setError(filesProblem(next) ?? '')
+  }
 
   async function submit(e?: FormEvent) {
     e?.preventDefault()
@@ -236,13 +389,20 @@ export function Composer({
     if (!body.trim() && files.length === 0) return
     const problem = filesProblem(files)
     if (problem) { setError(problem); return }
+    const sentText = body
+    const sentFiles = files
     setBusy(true)
     setError('')
-    const ok = await onSend(body.trim(), files).catch((err: unknown) => {
+    const ok = await onSend(sentText.trim(), sentFiles).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : 'That did not send. Please try again.')
       return false
     })
-    if (ok) { setBody(''); setFiles([]) }
+    if (ok) {
+      // Only what went: anything typed while it was on its way stays put.
+      setBody((cur) => (cur === sentText ? '' : cur.startsWith(sentText) ? cur.slice(sentText.length).replace(/^\s+/, '') : cur))
+      setFiles((cur) => cur.filter((f) => !sentFiles.includes(f)))
+      box.current?.focus()
+    }
     setBusy(false)
   }
 
@@ -253,8 +413,30 @@ export function Composer({
     }
   }
 
+  function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (!allowFiles) return
+    const pasted = Array.from(e.clipboardData.files)
+    if (pasted.length === 0) return
+    // A screenshot pasted in is a file to send, not text to type.
+    if (!e.clipboardData.getData('text')) e.preventDefault()
+    addFiles(pasted)
+  }
+
+  function onDrop(e: DragEvent<HTMLFormElement>) {
+    setDragging(false)
+    if (!allowFiles || e.dataTransfer.files.length === 0) return
+    e.preventDefault()
+    addFiles(Array.from(e.dataTransfer.files))
+  }
+
   return (
-    <form className="cch-composer" onSubmit={submit}>
+    <form
+      className={`cch-composer${dragging ? ' dragging' : ''}`}
+      onSubmit={submit}
+      onDragOver={(e) => { if (allowFiles && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true) } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false) }}
+      onDrop={onDrop}
+    >
       {files.length > 0 ? (
         <div className="cch-chips">
           {files.map((f, i) => (
@@ -276,19 +458,17 @@ export function Composer({
               accept={FILE_ACCEPT}
               hidden
               onChange={(e) => {
-                const picked = Array.from(e.target.files ?? [])
-                const next = [...files, ...picked]
-                setError(filesProblem(next) ?? '')
-                setFiles(next)
+                addFiles(Array.from(e.target.files ?? []))
                 e.target.value = ''
               }}
             />
-            <button type="button" className="cch-icon" aria-label="Attach a file" title="Attach a file" disabled={disabled || busy} onClick={() => picker.current?.click()}>
+            <button type="button" className="cch-icon" aria-label="Attach a file" title="Attach a file" disabled={disabled} onClick={() => picker.current?.click()}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
             </button>
           </>
         ) : null}
         <textarea
+          ref={box}
           className="cch-input"
           rows={1}
           value={body}
@@ -297,11 +477,17 @@ export function Composer({
           aria-label="Message"
           disabled={disabled}
           autoFocus={autoFocus}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => {
+            setBody(e.target.value)
+            if (e.target.value.trim()) onTyping?.()
+          }}
           onKeyDown={onKey}
+          onPaste={onPaste}
         />
-        <button type="submit" className="cch-icon cch-send" aria-label="Send" title="Send" disabled={disabled || busy || (!body.trim() && files.length === 0)}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+        <button type="submit" className="cch-icon cch-send" aria-label={busy ? 'Sending' : 'Send'} title="Send" disabled={disabled || busy || (!body.trim() && files.length === 0)}>
+          {busy
+            ? <span className="cch-spinner" aria-hidden="true" />
+            : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>}
         </button>
       </div>
     </form>

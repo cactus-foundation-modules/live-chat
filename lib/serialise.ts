@@ -29,6 +29,14 @@ export type ClientConversation = {
   notifications: boolean
   visitorId: string | null
   startedBy: 'visitor' | 'agent'
+  /** Our messages the visitor has not had on screen yet: 0 means they have seen
+   *  everything we sent. */
+  visitorUnread: number
+  visitorTyping: boolean
+  /** When the oldest message we have not answered arrived; list only. */
+  waitingSince: string | null
+  /** Whether the visitor is on the site now; null when we cannot tell. List only. */
+  visitorOnline: boolean | null
 }
 
 /** A visitor as the admin sees them: where they are, where they have been and
@@ -86,6 +94,10 @@ export function clientConversation(c: ChatConversation): ClientConversation {
     notifications: c.hasPush,
     visitorId: c.visitorId,
     startedBy: c.startedBy,
+    visitorUnread: c.unreadForVisitor,
+    visitorTyping: c.visitorTyping,
+    waitingSince: c.waitingSince?.toISOString() ?? null,
+    visitorOnline: c.visitorOnline,
   }
 }
 

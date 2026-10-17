@@ -59,3 +59,12 @@ export const SHOP_CART_STORAGE_KEY = 'cactus_shop_cart'
 export const SHOP_CART_EVENT = 'cactus-shop-cart-changed'
 /** The shop announces an add (not a removal or a quantity change) on this. */
 export const SHOP_CART_ADDED_EVENT = 'cactus-shop-cart-added'
+
+/** How long a "typing" stamp is believed for. Each side stamps it on its own
+ *  poll (every 3 seconds while the chat is on screen), so this is two polls and
+ *  a bit: long enough not to flicker, short enough to stop soon after they do. */
+export const TYPING_WINDOW_MS = 7_000
+
+/** How recently somebody must have pressed a key to count as still typing when
+ *  their next poll goes out. */
+export const TYPING_IDLE_MS = 4_000

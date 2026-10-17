@@ -11,6 +11,7 @@ import {
   listMessages,
   markReadByVisitor,
   setVisitorDetails,
+  stampTyping,
 } from '@/modules/chat/lib/db'
 import { hashIp, hashSecret, newConversationId, newSecret, visitorConversation } from '@/modules/chat/lib/visitor'
 import { messageBody, readMessageForm } from '@/modules/chat/lib/form'
@@ -38,12 +39,18 @@ export async function GET(request: NextRequest) {
   if (request.nextUrl.searchParams.get('seen') === '1' && conversation.unreadForVisitor > 0) {
     await markReadByVisitor(conversation.id)
   }
+  // They have been typing since their last ask: the admin's next ask shows it.
+  if (request.nextUrl.searchParams.get('typing') === '1' && conversation.status === 'open') {
+    await stampTyping(conversation.id, 'visitor')
+  }
   const { online } = await getChatSettings()
   return NextResponse.json(
     {
       online,
       status: conversation.status,
       unread: conversation.unreadForVisitor,
+      // Whoever on our side is typing: their name, '' when unnamed, null when nobody.
+      typing: conversation.agentTyping,
       messages: messages.map((m) => clientMessage(m, true)),
     },
     { headers: { 'Cache-Control': 'no-store' } },

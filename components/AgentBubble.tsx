@@ -5,7 +5,7 @@ import { CHAT_OPEN_EVENT } from '@/modules/chat/lib/constants'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import type { ClientConversation, ClientListedVisitor } from '@/modules/chat/lib/serialise'
 import { BodyPortal, ChatStyles } from './ui'
-import { AgentThread, ConversationList, useChatList } from './AgentThread'
+import { AgentThread, ConversationList, useChatList, visitorName } from './AgentThread'
 import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
 import { NameOverrideButton } from './NameOverride'
 import { useVisitors, VisitorList, VisitorPanel } from './Visitors'
@@ -24,10 +24,11 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
   const [tab, setTab] = useState<'chats' | 'visitors'>('chats')
   const [visitor, setVisitor] = useState<ClientListedVisitor | null>(null)
   const [peeks, setPeeks] = useState<Peek[]>([])
-  const { conversations, unread, refresh } = useChatList('open', open ? 4_000 : 10_000)
+  const chats = useChatList('open', open ? 4_000 : 10_000, { quietId: open ? active : null })
+  const { conversations, unread } = chats
   const lastSeen = useRef<Map<string, string> | null>(null)
   const availability = useAvailability()
-  const visitors = useVisitors(open && tab === 'visitors', 5_000)
+  const visitors = useVisitors(open, tab === 'visitors' ? 5_000 : 15_000)
 
   useEffect(() => { publishUnread(unread) }, [unread])
 
@@ -45,9 +46,14 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
     if (!before || open) return
     const fresh: Peek[] = conversations
       .filter((c: ClientConversation) => c.unread > 0 && before.get(c.id) !== c.lastMessageAt)
-      .map((c) => ({ id: c.id, who: c.visitorName || c.visitorEmail || 'Visitor', text: c.preview ?? '' }))
+      .map((c) => ({ id: c.id, who: visitorName(c), text: c.preview ?? '' }))
     if (fresh.length > 0) setPeeks((prev) => [...prev.filter((p) => !fresh.some((f) => f.id === p.id)), ...fresh].slice(-3))
   }, [conversations, open])
+
+  // A peek whose chat has since been read (here, in the inbox, by a colleague)
+  // is no longer news.
+  const livePeeks = peeks.filter((p) => conversations.some((c) => c.id === p.id && c.unread > 0))
+  const othersWaiting = conversations.filter((c) => c.unread > 0 && c.id !== active).length
 
   function openChat(id: string | null) {
     setActive(id)
@@ -65,7 +71,16 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
         {open ? (
           <section className="cch-panel" aria-label="Live chats">
             {active ? (
-              <AgentThread id={active} canReply={canReply} compact onBack={() => setActive(null)} onChanged={refresh} />
+              <AgentThread
+                key={active}
+                id={active}
+                canReply={canReply}
+                compact
+                othersWaiting={othersWaiting}
+                onConversation={chats.patch}
+                onDeleted={chats.remove}
+                onBack={() => setActive(null)}
+              />
             ) : visitor ? (
               <VisitorPanel
                 key={visitor.id}
@@ -73,7 +88,7 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
                 canReply={canReply}
                 compact
                 onBack={() => setVisitor(null)}
-                onChat={(id) => { void refresh(); void visitors.refresh(); openChat(id) }}
+                onChat={(id) => openChat(id)}
               />
             ) : (
               <>
@@ -94,7 +109,7 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
                   </button>
                 </div>
                 {tab === 'chats'
-                  ? <ConversationList conversations={conversations} onPick={(id) => setActive(id)} empty="No open chats. Suspiciously quiet." />
+                  ? <ConversationList conversations={conversations} activeId={active} onPick={(id) => setActive(id)} empty="No open chats. Suspiciously quiet." />
                   : <VisitorList visitors={visitors.visitors} reason={visitors.reason} loaded={visitors.loaded} onPick={setVisitor} />}
               </>
             )}
@@ -106,9 +121,9 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
           </section>
         ) : (
           <>
-            {peeks.length > 0 ? (
+            {livePeeks.length > 0 ? (
               <div className="cch-peeks">
-                {peeks.map((p) => (
+                {livePeeks.map((p) => (
                   <div key={p.id} style={{ position: 'relative' }}>
                     <button type="button" className="cch-peek" onClick={() => openChat(p.id)}>
                       <strong>{p.who}</strong>

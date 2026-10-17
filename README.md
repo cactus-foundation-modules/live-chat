@@ -28,6 +28,15 @@ own media storage (Backblaze on most sites).
 - **Name and email whenever suits.** The optional name and email boxes stay put
   for the whole chat, so a visitor who decides halfway through that they would
   like a reply by email can still leave one.
+- **Keeps itself up to date.** The admin chat window never needs a reload:
+  new messages, chats starting and ending, unread counts, who is on the site
+  and the Online switch all update on their own, at once when you come back to
+  the tab, and anything you do shows straight away in every other tab you have
+  it open in. "Typing…" shows both ways, your last reply says Seen once the
+  visitor has had it on screen, and each chat says how long it has been waiting.
+- **A reply box that keeps up.** Drafts kept per chat, words typed while a
+  message is sending kept too, screenshots pasted or files dropped straight in,
+  and a New message button instead of being yanked down while you scroll back.
 - **Answer from anywhere.** From *Inbox > Live chat* in the admin, from the
   bubble on the site itself while you are signed in, or from the Unified Inbox
   if you have it installed - new chats land there the moment they are sent.
@@ -39,7 +48,9 @@ own media storage (Backblaze on most sites).
   online and the visitor has no chat going. A welcome message goes to a visitor
   who has been on the site a set number of seconds without writing to us, and a
   basket message goes a set number of seconds (0 = straight away) after their
-  first add. Each is sent once per visitor.
+  first add. Each is sent once per visitor. A chat that is nothing but one
+  of these leaves your chat list when the visitor leaves the site without
+  answering, and comes back if they return.
 - **Your own name.** A cog in the chat header lets each colleague choose the
   name visitors see on their replies; left empty, it is the first name on their
   account.
@@ -73,7 +84,9 @@ you if your cookie banner is missing the Live chat switch.
   `live-chat` module, so the two can sit side by side while a site moves over.
 - "Live" is polling, which is the honest shape of it on serverless hosting: the
   visitor's widget asks every 3 seconds while open and 12 while shut, the admin
-  views every 3-5 seconds, all backing off when the tab is hidden.
+  views every 3-5 seconds, all backing off when the tab is hidden. Typing
+  rides along on those same polls (`?typing=1`, migration `009_typing.sql`),
+  so it costs no extra requests.
 - A visitor proves a chat is theirs with a secret their browser was handed when
   the chat began (sent as the `x-chat-visitor` header). Only its hash is stored.
   No accounts. Where the cookie banner carries the `live-chat` category,

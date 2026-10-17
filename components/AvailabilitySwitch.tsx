@@ -1,44 +1,46 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { API_BASE } from '@/modules/chat/lib/constants'
+import { availabilityFromServer, nudgeAdmin, publishAvailability, readAvailability, subscribeAvailability } from './live'
 
 // The Online/Offline switch for whoever answers chats. Site-wide: offline tells
-// visitors nobody is about (the widget still takes a message). It re-reads now
-// and then so a colleague flipping it elsewhere shows up here too.
+// visitors nobody is about (the widget still takes a message). Every switch on
+// the page shares one value, which the chat list refreshes on each of its polls,
+// so a colleague flipping it elsewhere shows up here within seconds.
 
 export function useAvailability() {
-  const [online, setOnline] = useState<boolean | null>(null)
+  const online = useSyncExternalStore(subscribeAvailability, readAvailability, () => null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    if (readAvailability() !== null) return
     let live = true
-    const read = () => fetch(`${API_BASE}/admin/availability`, { cache: 'no-store' })
+    fetch(`${API_BASE}/admin/availability`, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((json: { online: boolean } | null) => { if (live && json) setOnline(json.online) })
-      .catch(() => { /* next round */ })
-    void read()
-    const timer = setInterval(() => { if (!document.hidden) void read() }, 60_000)
-    return () => { live = false; clearInterval(timer) }
+      .then((json: { online: boolean } | null) => { if (live && json && readAvailability() === null) availabilityFromServer(json.online) })
+      .catch(() => { /* the chat list brings it soon enough */ })
+    return () => { live = false }
   }, [])
 
   const change = useCallback(async (next: boolean) => {
     setBusy(true)
-    const before = online
-    setOnline(next)
+    const before = readAvailability()
+    publishAvailability(next, 5_000)
     try {
       const res = await fetch(`${API_BASE}/admin/availability`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ online: next }),
       })
-      if (!res.ok) setOnline(before)
+      if (!res.ok) publishAvailability(before)
+      else nudgeAdmin()
     } catch {
-      setOnline(before)
+      publishAvailability(before)
     } finally {
       setBusy(false)
     }
-  }, [online])
+  }, [])
 
   return { online, busy, change }
 }

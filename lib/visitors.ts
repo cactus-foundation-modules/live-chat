@@ -217,6 +217,26 @@ export async function listOnlineVisitors(limit = 200): Promise<ListedVisitor[]> 
   return rows.map(toListed)
 }
 
+/** One visitor as the list shows them, whether or not they are still here, so
+ *  an open visitor panel keeps up with a chat that starts or ends under it. */
+export async function getListedVisitor(id: string): Promise<ListedVisitor | null> {
+  const rows = await prisma.$queryRaw<Row[]>`
+    SELECT v.*, c."id" AS conversation_id, c."status" AS conversation_status,
+           c."visitor_name", c."visitor_email", c."unread_for_agents"
+    FROM "chat_visitors" v
+    LEFT JOIN LATERAL (
+      SELECT "id", "status", "visitor_name", "visitor_email", "unread_for_agents"
+      FROM "chat_conversations"
+      WHERE "visitor_id" = v."id"
+      ORDER BY ("status" = 'open') DESC, "last_message_at" DESC
+      LIMIT 1
+    ) c ON true
+    WHERE v."id" = ${id}
+    LIMIT 1
+  `
+  return rows[0] ? toListed(rows[0]) : null
+}
+
 /** The open chat we started with this visitor that their browser should pick
  *  up, if there is one. Only ours: a chat the visitor started was handed its
  *  own secret, so their browser already holds it. */

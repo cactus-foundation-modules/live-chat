@@ -7,6 +7,7 @@ import {
   listMessages,
   markReadByAgents,
   setStatus,
+  stampTyping,
   storedFilesFor,
 } from '@/modules/chat/lib/db'
 import { requirePermission } from '@/modules/chat/lib/admin-auth'
@@ -20,7 +21,9 @@ import { PERM_MANAGE, PERM_REPLY, PERM_VIEW } from '@/modules/chat/lib/constants
 type Params = { params: Promise<{ id: string }> }
 
 // One chat for the admin: what is new since the last message they hold, and
-// marked read when they are actually looking at it.
+// marked read when they are actually looking at it. `typing=1` says the
+// colleague has been typing since their last ask, which the visitor's widget
+// shows as "Sam is typing…" on its own next ask - no request of its own.
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await requirePermission(PERM_VIEW)
   if ('response' in auth) return auth.response
@@ -34,8 +37,15 @@ export async function GET(request: NextRequest, { params }: Params) {
     // Where they are and what is in their basket, when they agreed to be listed.
     conversation.visitorId ? getVisitor(conversation.visitorId).catch(() => null) : Promise.resolve(null),
   ])
-  if (request.nextUrl.searchParams.get('read') === '1' && conversation.unreadForAgents > 0) {
+  const query = request.nextUrl.searchParams
+  if (query.get('typing') === '1' && conversation.status === 'open') {
+    await stampTyping(id, 'agent', await agentName(auth.user.id))
+  }
+  if (query.get('read') === '1' && conversation.unreadForAgents > 0) {
     await markReadByAgents(id)
+    // What the browser is handed says what is true now, so the list it patches
+    // from this answer loses its unread dot at once rather than a poll later.
+    conversation.unreadForAgents = 0
     after(syncAgentAlert)
   }
   return NextResponse.json(

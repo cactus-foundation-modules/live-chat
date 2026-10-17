@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { previewOf } from './text'
+import { ONLINE_WINDOW_SECONDS, TYPING_WINDOW_MS } from './constants'
 
 // ---------------------------------------------------------------------------
 // Every read and write of the chat_ tables. Raw SQL because the tables belong
@@ -27,6 +28,16 @@ export type ChatConversation = {
   closedAt: Date | null
   createdAt: Date
   updatedAt: Date
+  /** The visitor is typing right now (their browser said so in the last few seconds). */
+  visitorTyping: boolean
+  /** Whoever on our side is typing right now: their name, '' when we do not
+   *  know it, or null when nobody is. */
+  agentTyping: string | null
+  /** Only filled in by the list: when the oldest message we have not answered
+   *  yet arrived (null when nothing is waiting on us), and whether the visitor
+   *  is on the site now (null when they are not on the visitor list). */
+  waitingSince: Date | null
+  visitorOnline: boolean | null
 }
 
 export type ChatAttachment = {
@@ -56,7 +67,12 @@ export type StoredAttachment = ChatAttachment & {
 
 type Row = Record<string, unknown>
 
+function fresh(at: unknown, windowMs: number): boolean {
+  return at instanceof Date && Date.now() - at.getTime() < windowMs
+}
+
 function toConversation(r: Row): ChatConversation {
+  const listed = 'v_last_seen_at' in r
   return {
     id: String(r.id),
     visitorName: (r.visitor_name as string | null) ?? null,
@@ -74,6 +90,12 @@ function toConversation(r: Row): ChatConversation {
     closedAt: (r.closed_at as Date | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
+    visitorTyping: fresh(r.visitor_typing_at, TYPING_WINDOW_MS),
+    agentTyping: fresh(r.agent_typing_at, TYPING_WINDOW_MS) ? ((r.agent_typing_name as string | null) ?? '') : null,
+    waitingSince: (r.waiting_since as Date | null | undefined) ?? null,
+    visitorOnline: !listed || r.visitor_id == null || !(r.v_last_seen_at instanceof Date)
+      ? null
+      : r.v_left_at == null && fresh(r.v_last_seen_at, ONLINE_WINDOW_SECONDS * 1000),
   }
 }
 
@@ -134,12 +156,48 @@ export async function getTokenHash(id: string): Promise<string | null> {
   return rows[0]?.visitor_token_hash ?? null
 }
 
+/** The inbox list: each chat with whether the visitor is still on the site and
+ *  how long the oldest message we have not answered has been waiting.
+ *
+ *  A chat opened by an automatic message (welcome, basket) that nobody has
+ *  added to since - no word from the visitor, no reply from a colleague - is
+ *  only listed while that visitor is on the site. Once they leave it drops out,
+ *  and it comes back by itself if they return; it is not deleted, so their
+ *  browser still finds it. */
 export async function listConversations(status: ChatStatus, limit = 100): Promise<ChatConversation[]> {
   const rows = await prisma.$queryRaw<Row[]>`
-    SELECT * FROM "chat_conversations" WHERE "status" = ${status}
-    ORDER BY "last_message_at" DESC LIMIT ${limit}
+    SELECT c.*, v."last_seen_at" AS v_last_seen_at, v."left_at" AS v_left_at,
+      (SELECT MIN(m."created_at") FROM "chat_messages" m
+        WHERE m."conversation_id" = c."id" AND m."sender" = 'visitor'
+          AND m."id" > COALESCE((SELECT MAX(a."id") FROM "chat_messages" a WHERE a."conversation_id" = c."id" AND a."sender" = 'agent'), 0)
+      ) AS waiting_since
+    FROM "chat_conversations" c
+    LEFT JOIN "chat_visitors" v ON v."id" = c."visitor_id"
+    WHERE c."status" = ${status}
+      AND NOT (
+        c."auto_started"
+        AND (v."id" IS NULL OR v."left_at" IS NOT NULL OR v."last_seen_at" <= now() - make_interval(secs => ${ONLINE_WINDOW_SECONDS}::int4))
+        AND NOT EXISTS (
+          SELECT 1 FROM "chat_messages" h WHERE h."conversation_id" = c."id"
+            AND (h."sender" = 'visitor' OR (h."sender" = 'agent' AND h."author_user_id" IS NOT NULL))
+        )
+      )
+    ORDER BY c."last_message_at" DESC LIMIT ${limit}
   `
   return rows.map(toConversation)
+}
+
+/** Somebody is typing in this chat. Only an open chat, and never the
+ *  conversation's updated_at: typing is not news to anything that syncs. */
+export async function stampTyping(id: string, side: 'visitor' | 'agent', name: string | null = null): Promise<void> {
+  if (side === 'visitor') {
+    await prisma.$executeRaw`UPDATE "chat_conversations" SET "visitor_typing_at" = now() WHERE "id" = ${id} AND "status" = 'open'`
+    return
+  }
+  await prisma.$executeRaw`
+    UPDATE "chat_conversations" SET "agent_typing_at" = now(), "agent_typing_name" = ${name}
+    WHERE "id" = ${id} AND "status" = 'open'
+  `
 }
 
 /** For the conversation provider: newest first, optionally only those changed
@@ -268,7 +326,8 @@ export type NewAttachment = {
 /**
  * Saves one message and its files, and moves the conversation along with it:
  * newest-message time, preview, and the unread count of whichever side did not
- * write it. A message on a closed chat opens it again.
+ * write it, and that side's "typing…" (the message it was typing has arrived).
+ * A message on a closed chat opens it again.
  */
 export async function insertMessage(data: {
   conversationId: string
@@ -308,6 +367,8 @@ export async function insertMessage(data: {
           "unread_for_visitor" = "unread_for_visitor" + ${toVisitor}::int4,
           "status" = 'open',
           "closed_at" = NULL,
+          "visitor_typing_at" = CASE WHEN ${toAgents}::int4 = 1 THEN NULL ELSE "visitor_typing_at" END,
+          "agent_typing_at" = CASE WHEN ${toVisitor}::int4 = 1 THEN NULL ELSE "agent_typing_at" END,
           "updated_at" = now()
         WHERE "id" = ${data.conversationId}
       `
