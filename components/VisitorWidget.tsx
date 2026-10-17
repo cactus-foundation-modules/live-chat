@@ -44,6 +44,9 @@ type Saved = {
   chimed?: number
 }
 
+/** Per tab, so the window follows the visitor from page to page and no further. */
+const OPEN_STORAGE_KEY = 'cactus-chat-window-open'
+
 function load(): Saved {
   try { return JSON.parse(localStorage.getItem(VISITOR_STORAGE_KEY) ?? '{}') as Saved } catch { return {} }
 }
@@ -122,7 +125,15 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setName(initial.name ?? '')
     setEmail(initial.email ?? '')
     if (new URLSearchParams(window.location.search).get('chat') === 'open') setOpen(true)
+    // A page change remounts the window, so a window left open comes back open.
+    try { if (sessionStorage.getItem(OPEN_STORAGE_KEY) === '1') setOpen(true) } catch { /* no session storage: it starts closed */ }
   }, [])
+
+  const openHydrated = useRef(false)
+  useEffect(() => {
+    if (!openHydrated.current) { openHydrated.current = true; return }
+    try { if (open) sessionStorage.setItem(OPEN_STORAGE_KEY, '1'); else sessionStorage.removeItem(OPEN_STORAGE_KEY) } catch { /* nothing to remember it in */ }
+  }, [open])
 
   // Wake the chime's audio the first time the visitor touches the page.
   useEffect(() => {
@@ -445,7 +456,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
               </button>
             </header>
-            <MessageList messages={messages} mine="visitor" intro={greeting}>
+            <MessageList messages={messages} mine="visitor" intro={messages.some((m) => m.sender === 'agent') ? null : greeting}>
               {claim && status === 'open' && agentTyping !== null ? <TypingNote who={agentTyping} /> : null}
               {!allowed && chatConsent ? (
                 <ConsentCard

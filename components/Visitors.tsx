@@ -96,16 +96,19 @@ export function VisitorList({ visitors, reason, loaded, activeId, onPick }: {
 }
 
 /** Where they are, where they have been and what is in their basket. */
-export function VisitorDetails({ visitor }: { visitor: ClientVisitor }) {
+export function VisitorDetails({ visitor, email, hideCurrent }: { visitor: ClientVisitor; email?: string | null; hideCurrent?: boolean }) {
   const trail = [...visitor.pages].reverse()
   return (
     <div className="cch-visitor">
-      <p>
-        <span className={`cch-presence${visitor.online ? ' on' : ''}`} aria-hidden="true" />
-        {visitor.online ? 'On ' : 'Last seen on '}
-        {visitor.currentPath ? <a href={visitor.currentPath} target="_blank" rel="noopener noreferrer">{pageName(visitor.currentPath, visitor.currentTitle)}</a> : 'a page'}
-        {visitor.online ? null : <> {spanLabel(visitor.lastSeenAt)} ago</>}
-      </p>
+      {email ? <p><a href={`mailto:${email}`}>{email}</a></p> : null}
+      {hideCurrent ? null : (
+        <p>
+          <span className={`cch-presence${visitor.online ? ' on' : ''}`} aria-hidden="true" />
+          {visitor.online ? 'On ' : 'Last seen on '}
+          {visitor.currentPath ? <a href={visitor.currentPath} target="_blank" rel="noopener noreferrer">{pageName(visitor.currentPath, visitor.currentTitle)}</a> : 'a page'}
+          {visitor.online ? null : <> {spanLabel(visitor.lastSeenAt)} ago</>}
+        </p>
+      )}
       <p className="cch-muted">
         Here {spanLabel(visitor.firstSeenAt, new Date(visitor.lastSeenAt).getTime())}
         {visitor.device ? <> · {visitor.device}</> : null}
@@ -187,7 +190,7 @@ export function VisitorPanel({ visitor: listed, canReply, onBack, onChat, compac
         ) : null}
       </div>
       <div className="cch-body">
-        {gone ? <p className="cch-muted">This visitor has left and their trail has been cleared.</p> : <VisitorDetails visitor={visitor} />}
+        {gone ? <p className="cch-muted">This visitor has left and their trail has been cleared.</p> : <VisitorDetails visitor={visitor} email={visitor.email} />}
       </div>
       {canReply && !gone ? (
         chatting

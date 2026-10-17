@@ -288,11 +288,14 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
       {visitor && !gone ? (
         <details className="cch-about">
           <summary>
-            {visitor.online ? 'On ' : 'Was on '}{visitor.currentTitle || visitor.currentPath || 'the site'}
+            {visitor.online ? 'On ' : 'Was on '}
+            {visitor.currentPath
+              ? <a href={visitor.currentPath} target="_blank" rel="noopener noreferrer">{visitor.currentTitle || visitor.currentPath}</a>
+              : (visitor.currentTitle || 'the site')}
             {visitor.online ? '' : ` · left ${spanLabel(visitor.lastSeenAt)} ago`}
             {visitor.cart ? ` · basket of ${visitor.cart.reduce((n, l) => n + l.quantity, 0)}` : ''}
           </summary>
-          <VisitorDetails visitor={visitor} />
+          <VisitorDetails visitor={visitor} email={conversation?.visitorEmail} hideCurrent />
         </details>
       ) : null}
       {lostTouch && !gone ? <div className="cch-banner" role="status">Lost touch with the site. Trying again…</div> : null}

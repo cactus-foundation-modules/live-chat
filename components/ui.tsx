@@ -42,7 +42,7 @@ html[data-cch-cart=full] .cch-dock{display:none}
 @media (max-width:640px){.cch-dock.cch-no-launcher-mobile .cch-launcher{display:none}}
 .cch-head{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--color-primary);color:var(--color-on-primary)}
 .cch-head h2{flex:1;margin:0;font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit}
-.cch-head button{border:0;background:transparent;color:inherit;padding:4px 8px;border-radius:8px}
+.cch-head button{display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;padding:4px 8px;border-radius:8px}
 .cch-head button:hover{background:rgba(255,255,255,.15)}
 .cch-avail{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--color-border-strong);background:var(--color-surface);color:var(--color-text);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;flex:none}
 .cch-avail-dot{width:8px;height:8px;border-radius:999px;background:var(--color-text-muted)}
