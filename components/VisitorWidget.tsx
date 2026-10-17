@@ -203,6 +203,16 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
     setEnded(null)
     setStatus('open')
     update({ claim: `${reply.chat}.${secret}`, seen: 0, pushed: false })
+    // Details saved before there was a chat would otherwise wait for their
+    // first message; a chat we started gives them somewhere to go now.
+    const { name: knownName, email: knownEmail } = savedRef.current
+    if (knownName || knownEmail) {
+      fetch(`${API_BASE}/widget/details`, {
+        method: 'POST',
+        headers: { [VISITOR_HEADER]: `${reply.chat}.${secret}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ name: knownName || undefined, email: knownEmail || undefined }),
+      }).catch(() => { /* they ride along with the next message instead */ })
+    }
   }, [update])
   usePresence({
     enabled: track && consent !== null && chatConsent?.granted === true,
