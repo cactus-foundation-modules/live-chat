@@ -58,6 +58,8 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-msg.mine a{color:inherit}
 .cch-meta{font-size:12px;color:var(--color-text-muted);margin:0 4px}
 .cch-meta.mine{align-self:flex-end}
+.cch-time{font-size:11px;color:var(--color-text-muted);margin:-4px 4px 0}
+.cch-time.mine{align-self:flex-end}
 .cch-system{align-self:center;font-size:12px;color:var(--color-text-muted);text-align:center}
 .cch-file{display:block;margin-top:6px}
 .cch-file img{display:block;max-width:220px;max-height:220px;border-radius:8px}
@@ -180,6 +182,14 @@ export function timeLabel(iso: string): string {
     : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+/** The time on a single message: just the clock today, date and clock before. */
+export function messageTime(iso: string): string {
+  const date = new Date(iso)
+  const clock = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  if (date.toDateString() === new Date().toDateString()) return clock
+  return `${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${clock}`
+}
+
 export async function readError(res: Response): Promise<string> {
   const json = (await res.json().catch(() => null)) as { error?: string } | null
   return json?.error ?? 'Something went wrong. Please try again.'
@@ -281,7 +291,7 @@ export function MessageList({
         const who = m.sender === 'visitor' ? (mine === 'visitor' ? 'You' : (theirName || 'Visitor')) : (m.authorName ?? 'Us')
         return (
           <div key={m.id} style={{ display: 'contents' }}>
-            {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who} · <time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString('en-GB')}>{timeLabel(m.createdAt)}</time></div> : null}
+            {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who}</div> : null}
             <div className={`cch-msg ${isMine ? 'mine' : 'theirs'}`}>
               <LinkedText text={m.body} />
               {m.attachments.map((a) => (
@@ -293,6 +303,7 @@ export function MessageList({
                 </a>
               ))}
             </div>
+            <div className={`cch-time${isMine ? ' mine' : ''}`}><time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString('en-GB')}>{messageTime(m.createdAt)}</time></div>
             {receipt && receipt.id === m.id ? <div className={`cch-meta cch-receipt${isMine ? ' mine' : ''}`}>{receipt.text}</div> : null}
           </div>
         )
