@@ -55,7 +55,7 @@ function bareHost(host: string): string {
 
 /** The slug a product page's address names, or null when it is not one of ours.
  *  `/shop/products/<slug>` always; a bare `/<slug>` only on a shop that
- *  publishes its products there. The query and the fragment choose nothing. */
+ *  publishes its products there. The query is read separately (picksFromAddress). */
 export function slugFromAddress(address: string, siteUrl: string | null, rootStyle: boolean): string | null {
   if (!siteUrl) return null
   try {
@@ -159,10 +159,95 @@ function pageOf(slug: string, s: Settings): string {
     : `${s.siteUrl}/shop/products/${encodeURIComponent(slug)}`
 }
 
+/** The name an option's query parameter goes by on the storefront - the
+ *  option's name, lowercased, accents folded, runs of anything else hyphenated.
+ *  Restated from the variations module, which this one does not import. */
+function optionParamKey(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/** The picks a shared product link carries: `?seat-colour=oxford-blue&width=1600mm`. */
+function picksFromAddress(address: string): Map<string, string> {
+  const picks = new Map<string, string>()
+  try {
+    new URL(address).searchParams.forEach((value, key) => {
+      if (value && !picks.has(key)) picks.set(key, value)
+    })
+  } catch {
+    // An address that does not parse has no picks.
+  }
+  return picks
+}
+
+type PickedRow = {
+  id: string
+  name: string
+  slug: string
+  price: unknown
+  sale_price: unknown
+  tax_class_id: unknown
+  image_url: string | null
+  /** [option name, value slug, value label] in display order. */
+  pairs: [string, string, string][] | null
+}
+
+/** The enabled variation of a listing that a link's picks name, when the link
+ *  names one. A pick for an option the listing does not have is ignored; a pick
+ *  that no variation shares settles nothing, so the listing stands as it is.
+ *  Several matches (a partial pick) come back together for the caller to quote. */
+async function pickedVariations(listingId: string, picks: Map<string, string>): Promise<{ rows: PickedRow[]; matched: [string, string, string][] } | null> {
+  if (picks.size === 0) return null
+  const rows = await prisma.$queryRaw<PickedRow[]>`
+    SELECT c."id", c."name", c."slug", c."price", c."sale_price", c."tax_class_id",
+           COALESCE(
+             (SELECT m."url" FROM "shp_product_media" m
+               WHERE m."product_id" = c."id" AND m."type" = 'IMAGE'
+               ORDER BY m."is_primary" DESC, m."position" ASC
+               LIMIT 1),
+             (SELECT m."url" FROM "shp_product_media" m
+               WHERE m."product_id" = v."product_id" AND m."type" = 'IMAGE'
+               ORDER BY m."is_primary" DESC, m."position" ASC
+               LIMIT 1)
+           ) AS "image_url",
+           (SELECT json_agg(json_build_array(o."name", ov."slug", ov."label") ORDER BY o."position" ASC, ov."position" ASC)
+              FROM "svr_variant_values" vv
+              JOIN "svr_option_values" ov ON ov."id" = vv."option_value_id"
+              JOIN "svr_options" o ON o."id" = ov."option_id"
+             WHERE vv."variant_id" = v."id") AS "pairs"
+      FROM "svr_variants" v
+      JOIN "shp_products" c ON c."id" = v."child_product_id"
+     WHERE v."product_id" = ${listingId} AND v."enabled" = true AND c."status" = 'ACTIVE'
+     ORDER BY v."position" ASC
+  `.catch(() => [] as PickedRow[])
+
+  let best = 0
+  let kept: PickedRow[] = []
+  let matched: [string, string, string][] = []
+  for (const row of rows) {
+    let score = 0
+    let conflict = false
+    const hits: [string, string, string][] = []
+    for (const [name, slug, label] of row.pairs ?? []) {
+      const wanted = picks.get(optionParamKey(name))
+      if (wanted === undefined) continue
+      if (wanted === slug) { score += 1; hits.push([name, label, slug]) } else conflict = true
+    }
+    if (conflict || score === 0 || score < best) continue
+    if (score > best) { best = score; kept = []; matched = hits }
+    kept.push(row)
+  }
+  return kept.length > 0 ? { rows: kept, matched } : null
+}
+
 /** One product by its slug, or null when it is not on sale: a listing in the
  *  catalogue, or a switched-on variation (a hidden row published at its own
  *  slug). Anything else hidden is hidden on purpose. */
-async function productBySlug(slug: string, s: Settings): Promise<ChatProduct | null> {
+async function productBySlug(slug: string, s: Settings, picks: Map<string, string>): Promise<ChatProduct | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT p."id", p."name", p."slug", p."price", p."sale_price", p."tax_class_id", p."catalogue_hidden",
            (SELECT m."url" FROM "shp_product_media" m
@@ -211,6 +296,35 @@ async function productBySlug(slug: string, s: Settings): Promise<ChatProduct | n
   // photographed finish by finish keeps its pictures on the variations, so a
   // listing with none of its own borrows its first switched-on variation's.
   if (s.variations) {
+    // A link carrying the shopper's picks is about that variation, not the range.
+    const picked = await pickedVariations(id, picks)
+    if (picked) {
+      const [first] = picked.rows
+      if (first && picked.rows.length === 1) {
+        return {
+          url: pageOf(first.slug, s),
+          name: first.name || base.name,
+          imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
+          options: (first.pairs ?? []).map((p) => p[2]).join(' / ') || null,
+          price: priceLine(charged(first.price, first.sale_price, s.saleEnabled), false, first.tax_class_id, s),
+        }
+      }
+      if (first) {
+        const prices = picked.rows.map((r) => charged(r.price, r.sale_price, s.saleEnabled))
+        const cheapest = Math.min(...prices)
+        // The listing's page, with the picks kept so it opens preselected.
+        const query = picked.matched
+          .map((m) => `${encodeURIComponent(optionParamKey(m[0]))}=${encodeURIComponent(m[2])}`)
+          .join('&')
+        return {
+          ...base,
+          url: `${base.url}?${query}`,
+          imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
+          options: picked.matched.map((m) => m[1]).join(' / ') || null,
+          price: priceLine(cheapest, Math.max(...prices) - cheapest > 0.005, row.tax_class_id, s),
+        }
+      }
+    }
     if (!base.imageUrl) {
       const borrowed = await prisma.$queryRaw<{ url: string }[]>`
         SELECT m."url"
@@ -267,7 +381,7 @@ export async function productsForTexts(texts: readonly string[]): Promise<Map<st
     const settings = await readSettings()
     for (const address of missing.slice(0, 20)) {
       const slug = settings ? slugFromAddress(address, settings.siteUrl, settings.rootStyle) : null
-      const product = slug && settings ? await productBySlug(slug, settings) : null
+      const product = slug && settings ? await productBySlug(slug, settings, picksFromAddress(address)) : null
       if (cache.size >= CACHE_MAX) cache.clear()
       cache.set(address, { at: now, product })
       if (product) out.set(address, product)

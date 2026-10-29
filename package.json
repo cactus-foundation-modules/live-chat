@@ -1,6 +1,6 @@
 {
   "name": "cactus-module-chat",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Live Chat - a small, self-contained live chat for Cactus sites",
   "license": "MIT",
   "private": true
