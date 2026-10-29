@@ -8,7 +8,7 @@ import { messageBody, readMessageForm } from '@/modules/chat/lib/form'
 import { filesProblem } from '@/modules/chat/lib/text'
 import { ChatEndedError, sendAgentReply } from '@/modules/chat/lib/reply'
 import { StorageUnavailableError } from '@/modules/chat/lib/attachments'
-import { clientMessage } from '@/modules/chat/lib/serialise'
+import { clientMessages } from '@/modules/chat/lib/serialise'
 import { PERM_REPLY } from '@/modules/chat/lib/constants'
 
 type Params = { params: Promise<{ id: string }> }
@@ -52,7 +52,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   try {
     const message = await sendAgentReply(conversationId, auth.user.id, body, form.files)
-    return NextResponse.json({ conversationId, message: clientMessage(message, false) })
+    const [sent] = await clientMessages([message], false)
+    return NextResponse.json({ conversationId, message: sent })
   } catch (err) {
     // A chat that never got its first message is not a chat.
     if (created) await deleteConversations([conversationId])

@@ -18,7 +18,7 @@ import { messageBody, readMessageForm } from '@/modules/chat/lib/form'
 import { cleanEmail, cleanName, cleanPhone, filesProblem } from '@/modules/chat/lib/text'
 import { storeFiles, StorageUnavailableError } from '@/modules/chat/lib/attachments'
 import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
-import { clientMessage } from '@/modules/chat/lib/serialise'
+import { clientMessages } from '@/modules/chat/lib/serialise'
 import { getConsentState, mayChat } from '@/modules/chat/lib/consent'
 import { linkConversationToVisitor, visitorFromRequest } from '@/modules/chat/lib/visitors'
 import { CONSENT_CATEGORY } from '@/modules/chat/lib/constants'
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       unread: conversation.unreadForVisitor,
       // Whoever on our side is typing: their name, '' when unnamed, null when nobody.
       typing: conversation.agentTyping,
-      messages: messages.map((m) => clientMessage(m, true)),
+      messages: await clientMessages(messages, true),
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
@@ -129,5 +129,6 @@ export async function POST(request: NextRequest) {
     await announce(conversationId)
   })
 
-  return NextResponse.json({ claim, message: clientMessage(message, true) })
+  const [sent] = await clientMessages([message], true)
+  return NextResponse.json({ claim, message: sent })
 }

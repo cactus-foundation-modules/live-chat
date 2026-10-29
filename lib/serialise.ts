@@ -3,6 +3,8 @@ import type { ChatConversation, ChatMessage } from './db'
 import { visitorIsOnline, type ChatVisitor, type ListedVisitor } from './visitors'
 import { cartTotal, type CartLine, type TrailPage } from './trail'
 import { attachmentSignature } from './visitor'
+import { productAddressesIn, type ChatProduct } from './product-links'
+import { productsForTexts } from './products'
 
 // What a browser is handed. The visitor's copy carries signed attachment links
 // (they have no session to be checked against); the admin's copy does not need
@@ -16,6 +18,9 @@ export type ClientMessage = {
   body: string
   createdAt: string
   attachments: ClientAttachment[]
+  /** The product pages in the body, drawn as products, keyed by the address as
+   *  it was written. Only what is in this message. */
+  products: Record<string, ChatProduct>
 }
 export type ClientConversation = {
   id: string
@@ -66,7 +71,24 @@ export type ClientListedVisitor = ClientVisitor & {
   unread: number
 }
 
-export function clientMessage(m: ChatMessage, forVisitor: boolean): ClientMessage {
+/** Messages for a browser, with the products in them looked up in one go. */
+export async function clientMessages(list: readonly ChatMessage[], forVisitor: boolean): Promise<ClientMessage[]> {
+  const found = await productsForTexts(list.map((m) => m.body))
+  return list.map((m) => clientMessage(m, forVisitor, found))
+}
+
+export function clientMessage(
+  m: ChatMessage,
+  forVisitor: boolean,
+  found: ReadonlyMap<string, ChatProduct> = new Map(),
+): ClientMessage {
+  const products: Record<string, ChatProduct> = {}
+  if (found.size > 0) {
+    for (const address of productAddressesIn(m.body)) {
+      const product = found.get(address)
+      if (product) products[address] = product
+    }
+  }
   return {
     id: m.id,
     sender: m.sender,
@@ -79,6 +101,7 @@ export function clientMessage(m: ChatMessage, forVisitor: boolean): ClientMessag
         ? `${API_BASE}/attachments/${a.id}?sig=${attachmentSignature(a.id)}`
         : `${API_BASE}/attachments/${a.id}`,
     })),
+    products,
   }
 }
 

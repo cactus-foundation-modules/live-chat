@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { createPortal } from 'react-dom'
 import { FILE_ACCEPT, MAX_MESSAGE_CHARS } from '@/modules/chat/lib/constants'
 import { filesProblem } from '@/modules/chat/lib/text'
-import { splitLinks } from '@/modules/chat/lib/links'
+import { splitMessage, type ChatProduct } from '@/modules/chat/lib/product-links'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
 
 // The pieces every chat surface shares: the visitor's widget, the admin bubble
@@ -61,6 +61,13 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-time{font-size:11px;color:var(--color-text-muted);margin:-4px 4px 0}
 .cch-time.mine{align-self:flex-end}
 .cch-system{align-self:center;font-size:12px;color:var(--color-text-muted);text-align:center}
+.cch-msg a.cch-product{display:flex;align-items:center;gap:10px;margin:6px 0;padding:8px;min-width:min(240px,100%);border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);color:var(--color-text);text-decoration:none;white-space:normal}
+.cch-msg a.cch-product:hover{border-color:var(--color-border-strong)}
+.cch-product img{flex:none;width:56px;height:56px;border-radius:6px;object-fit:cover;border:1px solid var(--color-border)}
+.cch-product-words{display:flex;flex-direction:column;min-width:0;gap:2px}
+.cch-product-words strong{font-weight:600;text-decoration:underline}
+.cch-product-opts{font-size:13px;color:var(--color-text-secondary)}
+.cch-product-price{font-size:14px;font-weight:600}
 .cch-file{display:block;margin-top:6px}
 .cch-file img{display:block;max-width:220px;max-height:220px;border-radius:8px}
 .cch-contact{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:8px 14px;background:var(--color-surface);border-bottom:1px solid var(--color-border);font-size:13px;flex:none;position:sticky;top:0;z-index:1}
@@ -293,7 +300,7 @@ export function MessageList({
           <div key={m.id} style={{ display: 'contents' }}>
             {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who}</div> : null}
             <div className={`cch-msg ${isMine ? 'mine' : 'theirs'}`}>
-              <LinkedText text={m.body} />
+              <MessageText text={m.body} products={m.products ?? {}} />
               {m.attachments.map((a) => (
                 <a key={a.id} className="cch-file" href={a.url} target="_blank" rel="noopener noreferrer">
                   {a.contentType.startsWith('image/') && !a.contentType.includes('heic')
@@ -319,17 +326,35 @@ export function MessageList({
   )
 }
 
-/** A message's words, with `[name](address)` drawn as a link. Elements, never
- *  markup, so nothing in a message can be anything but text or an anchor. */
-function LinkedText({ text }: { text: string }) {
+/** A message's words, with `[name](address)` drawn as a link and a product
+ *  page drawn as the product - picture, name, price - the way the Unified Inbox
+ *  shows one. Elements, never markup, so nothing in a message can be anything
+ *  but text, an anchor or a card built from the shop's own data. */
+function MessageText({ text, products }: { text: string; products: Readonly<Record<string, ChatProduct>> }) {
   return (
     <>
-      {splitLinks(text).map((part, i) => (
-        typeof part === 'string'
-          ? <span key={i}>{part}</span>
-          : <a key={i} href={part.url} target="_blank" rel="noopener noreferrer">{part.label}</a>
-      ))}
+      {splitMessage(text, products).map((part, i) => {
+        if (typeof part === 'string') return <span key={i}>{part}</span>
+        if ('label' in part) return <a key={i} href={part.url} target="_blank" rel="noopener noreferrer">{part.label}</a>
+        return <ProductCard key={i} product={part.product} />
+      })}
     </>
+  )
+}
+
+function ProductCard({ product }: { product: ChatProduct }) {
+  return (
+    <a className="cch-product" href={product.url} target="_blank" rel="noopener noreferrer">
+      {product.imageUrl
+        // eslint-disable-next-line @next/next/no-img-element -- a picture inside a chat bubble on any site; next/image needs its host configured
+        ? <img src={product.imageUrl} alt="" width={56} height={56} loading="lazy" />
+        : null}
+      <span className="cch-product-words">
+        <strong>{product.name}</strong>
+        {product.options ? <span className="cch-product-opts">{product.options}</span> : null}
+        {product.price ? <span className="cch-product-price">{product.price}</span> : null}
+      </span>
+    </a>
   )
 }
 

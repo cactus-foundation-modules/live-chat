@@ -11,7 +11,7 @@ import {
   storedFilesFor,
 } from '@/modules/chat/lib/db'
 import { requirePermission } from '@/modules/chat/lib/admin-auth'
-import { clientConversation, clientMessage, clientVisitor } from '@/modules/chat/lib/serialise'
+import { clientConversation, clientMessages, clientVisitor } from '@/modules/chat/lib/serialise'
 import { getVisitor } from '@/modules/chat/lib/visitors'
 import { deleteStoredFiles } from '@/modules/chat/lib/attachments'
 import { agentName } from '@/modules/chat/lib/agent'
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   return NextResponse.json(
     {
       conversation: clientConversation(conversation),
-      messages: messages.map((m) => clientMessage(m, false)),
+      messages: await clientMessages(messages, false),
       visitor: visitor ? clientVisitor(visitor) : null,
     },
     { headers: { 'Cache-Control': 'no-store' } },

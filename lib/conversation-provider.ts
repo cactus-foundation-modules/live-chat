@@ -18,7 +18,8 @@ import {
 } from './db'
 import { sendAgentReply } from './reply'
 import { syncAgentAlert } from './notify'
-import { linksToHtml } from './links'
+import { messageHtml, type ChatProduct } from './product-links'
+import { productsForTexts } from './products'
 
 // Live chats published as plain data, so the Unified Inbox (or anything else
 // reading core.conversation-provider) can list them beside email and answer
@@ -42,7 +43,7 @@ function toSummary(c: ChatConversation): ConversationSummary {
   }
 }
 
-function toMessage(m: ChatMessage): ConversationMessage {
+function toMessage(m: ChatMessage, products: Readonly<Record<string, ChatProduct>>): ConversationMessage {
   return {
     id: String(m.id),
     // A system line ("the visitor ended the chat") is our own remark, and must
@@ -50,7 +51,7 @@ function toMessage(m: ChatMessage): ConversationMessage {
     direction: m.sender === 'visitor' ? 'in' : m.sender === 'agent' ? 'out' : 'note',
     authorName: m.sender === 'system' ? null : m.authorName,
     text: m.body,
-    html: linksToHtml(m.body),
+    html: messageHtml(m.body, products),
     sentAt: m.createdAt,
     attachments: m.attachments.map((a) => ({ filename: a.filename, url: `${API_BASE}/attachments/${a.id}`, contentType: a.contentType })),
   }
@@ -74,7 +75,8 @@ async function thread(id: string): Promise<ConversationThread | null> {
   const conversation = await getConversation(id)
   if (!conversation) return null
   const messages = await listMessages(id)
-  return { summary: toSummary(conversation), messages: messages.map(toMessage) }
+  const products = Object.fromEntries(await productsForTexts(messages.map((m) => m.body)))
+  return { summary: toSummary(conversation), messages: messages.map((m) => toMessage(m, products)) }
 }
 
 async function send(id: string, body: { text: string; authorUserId: string }): Promise<void> {

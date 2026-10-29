@@ -6,7 +6,7 @@ import { messageBody, readMessageForm } from '@/modules/chat/lib/form'
 import { filesProblem } from '@/modules/chat/lib/text'
 import { ChatEndedError, sendAgentReply } from '@/modules/chat/lib/reply'
 import { StorageUnavailableError } from '@/modules/chat/lib/attachments'
-import { clientMessage } from '@/modules/chat/lib/serialise'
+import { clientMessages } from '@/modules/chat/lib/serialise'
 import { PERM_REPLY } from '@/modules/chat/lib/constants'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +26,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const message = await sendAgentReply(id, auth.user.id, body, form.files)
-    return NextResponse.json({ message: clientMessage(message, false) })
+    const [sent] = await clientMessages([message], false)
+    return NextResponse.json({ message: sent })
   } catch (err) {
     if (err instanceof StorageUnavailableError) return errorResponse(err.message, 503)
     if (err instanceof ChatEndedError) return errorResponse(err.message, 409)
