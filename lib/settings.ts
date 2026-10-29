@@ -25,6 +25,10 @@ export type ChatSettings = {
   welcomeDelaySeconds: number
   /** The name shown on the welcome and basket messages. */
   autoMessageAuthor: string
+  /** Post `offlineNoticeMessage` into a chat a colleague has answered when the
+   *  visitor writes again after we went offline. Once per offline spell. */
+  offlineNoticeEnabled: boolean
+  offlineNoticeMessage: string
   /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
   online: boolean
 }
@@ -47,6 +51,8 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   welcomeMessage: 'Hello! Have a look around, and if there is anything we can help with, just ask here.',
   welcomeDelaySeconds: 20,
   autoMessageAuthor: 'Our team',
+  offlineNoticeEnabled: true,
+  offlineNoticeMessage: 'Sorry - we have had to step away since we last spoke, so we cannot reply straight away.',
   online: true,
 }
 
@@ -74,14 +80,16 @@ export async function getChatSettings(): Promise<ChatSettings> {
     welcomeMessage: typeof r.welcome_message === 'string' && r.welcome_message ? r.welcome_message : DEFAULT_SETTINGS.welcomeMessage,
     welcomeDelaySeconds: Math.max(0, Number(r.welcome_delay_seconds ?? DEFAULT_SETTINGS.welcomeDelaySeconds) || 0),
     autoMessageAuthor: typeof r.auto_message_author === 'string' && r.auto_message_author.trim() ? r.auto_message_author : DEFAULT_SETTINGS.autoMessageAuthor,
+    offlineNoticeEnabled: r.offline_notice_enabled !== false,
+    offlineNoticeMessage: typeof r.offline_notice_message === 'string' && r.offline_notice_message.trim() ? r.offline_notice_message : DEFAULT_SETTINGS.offlineNoticeMessage,
     online: r.agent_online !== false,
   }
 }
 
 export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "auto_message_author", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, ${next.autoMessageAuthor}, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "auto_message_author", "offline_notice_enabled", "offline_notice_message", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, ${next.autoMessageAuthor}, ${next.offlineNoticeEnabled}, ${next.offlineNoticeMessage}, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -100,6 +108,8 @@ export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Prom
       "welcome_message" = EXCLUDED."welcome_message",
       "welcome_delay_seconds" = EXCLUDED."welcome_delay_seconds",
       "auto_message_author" = EXCLUDED."auto_message_author",
+      "offline_notice_enabled" = EXCLUDED."offline_notice_enabled",
+      "offline_notice_message" = EXCLUDED."offline_notice_message",
       "updated_at" = now()
   `
 }

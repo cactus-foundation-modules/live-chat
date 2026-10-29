@@ -34,6 +34,8 @@ const Body = z.object({
   welcomeMessage: z.string().trim().min(1).max(300),
   welcomeDelaySeconds: z.number().int().min(0).max(3600),
   autoMessageAuthor: z.string().trim().min(1).max(60),
+  offlineNoticeEnabled: z.boolean(),
+  offlineNoticeMessage: z.string().trim().min(1).max(300),
 })
 
 export async function PUT(request: NextRequest) {

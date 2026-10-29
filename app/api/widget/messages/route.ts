@@ -19,6 +19,7 @@ import { cleanEmail, cleanName, cleanPhone, filesProblem } from '@/modules/chat/
 import { storeFiles, StorageUnavailableError } from '@/modules/chat/lib/attachments'
 import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
 import { clientMessages } from '@/modules/chat/lib/serialise'
+import { sendOfflineNoticeIfDue } from '@/modules/chat/lib/offline-notice'
 import { getConsentState, mayChat } from '@/modules/chat/lib/consent'
 import { linkConversationToVisitor, visitorFromRequest } from '@/modules/chat/lib/visitors'
 import { CONSENT_CATEGORY } from '@/modules/chat/lib/constants'
@@ -78,6 +79,8 @@ export async function POST(request: NextRequest) {
   const conversation = await visitorConversation(request)
   let conversationId: string
   let claim: string | null = null
+  // Who we could reply to, once this message's own details are counted.
+  let contact: { email: string | null; phone: string | null } = { email: null, phone: null }
 
   if (!conversation) {
     const ipHash = hashIp(await getClientIp(request))
@@ -110,6 +113,7 @@ export async function POST(request: NextRequest) {
     const email = cleanEmail(form.fields.email)
     const phone = cleanPhone(form.fields.phone)
     if (name || email || phone) await setVisitorDetails(conversation.id, { name, email, phone })
+    contact = { email: email ?? conversation.visitorEmail, phone: phone ?? conversation.visitorPhone }
   }
 
   let attachments
@@ -124,11 +128,15 @@ export async function POST(request: NextRequest) {
   }
 
   const message = await insertMessage({ conversationId, sender: 'visitor', body, attachments })
+  // Written to a chat one of us was answering, after we went offline: say so,
+  // and ask how to reach them if we have no way to. A brand new chat opened on
+  // the away message already, so it never owes one.
+  const notice = claim ? null : await sendOfflineNoticeIfDue(conversationId, settings, contact)
   after(async () => {
     await syncAgentAlert()
     await announce(conversationId)
   })
 
-  const [sent] = await clientMessages([message], true)
-  return NextResponse.json({ claim, message: sent })
+  const [sent, noticed] = await clientMessages(notice ? [message, notice] : [message], true)
+  return NextResponse.json({ claim, message: sent, notice: noticed ?? null })
 }

@@ -97,6 +97,12 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-modal{background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border);border-radius:12px;padding:16px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
 .cch-modal h3{margin:0;font-size:16px;font-weight:600;color:inherit}
 .cch-modal p{margin:0}
+.cch-field-label{font-size:13px;font-weight:600;color:var(--color-text);padding:0}
+.cch-notif{border:0;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.cch-notif-kind{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:8px 0;border-top:1px solid var(--color-border)}
+.cch-notif-name{flex:1 1 100%;font-size:14px}
+.cch-notif-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--color-text-secondary)}
+.cch-notif-check:has(input:disabled){opacity:.6}
 .cch-icon{border:0;background:transparent;color:var(--color-text-secondary);width:38px;height:38px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .cch-icon:hover{background:var(--color-bg-subtle)}
 .cch-send{background:var(--color-primary);color:var(--color-on-primary)}

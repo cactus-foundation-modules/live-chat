@@ -185,8 +185,13 @@ async function productBySlug(slug: string, s: Settings): Promise<ChatProduct | n
 
   if (row.catalogue_hidden) {
     if (!s.variations) return null
-    const found = await prisma.$queryRaw<{ options: string | null }[]>`
-      SELECT (SELECT string_agg(ov."label", ' / ' ORDER BY o."position" ASC, ov."position" ASC)
+    // A variation with no photograph of its own shows its listing's.
+    const found = await prisma.$queryRaw<{ options: string | null; listing_image: string | null }[]>`
+      SELECT (SELECT m."url" FROM "shp_product_media" m
+               WHERE m."product_id" = v."product_id" AND m."type" = 'IMAGE'
+               ORDER BY m."is_primary" DESC, m."position" ASC
+               LIMIT 1) AS "listing_image",
+             (SELECT string_agg(ov."label", ' / ' ORDER BY o."position" ASC, ov."position" ASC)
                 FROM "svr_variant_values" vv
                 JOIN "svr_option_values" ov ON ov."id" = vv."option_value_id"
                 JOIN "svr_options" o ON o."id" = ov."option_id"
@@ -197,12 +202,26 @@ async function productBySlug(slug: string, s: Settings): Promise<ChatProduct | n
     `
     if (!found[0]) return null
     const options = found[0].options?.trim() || null
-    return { ...base, options, price: priceLine(own, false, row.tax_class_id, s) }
+    const imageUrl = base.imageUrl ?? absoluteImage(found[0].listing_image, s.siteUrl)
+    return { ...base, imageUrl, options, price: priceLine(own, false, row.tax_class_id, s) }
   }
 
   // A listing with variations is quoted from its cheapest switched-on one, as
-  // the storefront card quotes it; "From" only where they really differ.
+  // the storefront card quotes it; "From" only where they really differ. A range
+  // photographed finish by finish keeps its pictures on the variations, so a
+  // listing with none of its own borrows its first switched-on variation's.
   if (s.variations) {
+    if (!base.imageUrl) {
+      const borrowed = await prisma.$queryRaw<{ url: string }[]>`
+        SELECT m."url"
+          FROM "svr_variants" v
+          JOIN "shp_product_media" m ON m."product_id" = v."child_product_id" AND m."type" = 'IMAGE'
+         WHERE v."product_id" = ${id} AND v."enabled" = true
+         ORDER BY v."position" ASC, m."is_primary" DESC, m."position" ASC
+         LIMIT 1
+      `.catch(() => [] as { url: string }[])
+      base.imageUrl = absoluteImage(borrowed[0]?.url, s.siteUrl)
+    }
     const range = await prisma.$queryRaw<{ cheapest: unknown; dearest: unknown }[]>`
       SELECT MIN(CASE WHEN ${s.saleEnabled} AND c."sale_price" IS NOT NULL AND c."sale_price" >= 0 AND c."sale_price" < c."price"
                       THEN c."sale_price" ELSE c."price" END) AS "cheapest",

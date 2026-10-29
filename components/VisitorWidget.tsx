@@ -336,12 +336,14 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
       savedRef.current.presence ? { ...headers(), [PRESENCE_HEADER]: savedRef.current.presence } : headers(),
     ))
     if (!res.ok) throw new Error(await readError(res))
-    const json = (await res.json()) as { claim: string | null; message: ClientMessage }
+    const json = (await res.json()) as { claim: string | null; message: ClientMessage; notice?: ClientMessage | null }
     const details = { name: name.trim() || savedRef.current.name, email: cleanEmail(email) ?? savedRef.current.email, phone: cleanPhone(phone) ?? savedRef.current.phone }
     update(json.claim ? { claim: json.claim, ...details, seen: 0 } : details)
     // Merged rather than appended, and the poll's place left where it was: a
     // reply from us that landed just before this message is still fetched.
-    setMessages((prev) => mergeMessages(prev, [json.message]))
+    // A note that we have gone offline since comes back with it, so it shows at
+    // once rather than on the next poll.
+    setMessages((prev) => mergeMessages(prev, json.notice ? [json.message, json.notice] : [json.message]))
     typedAt.current = 0
     setStatus('open')
     if (!savedRef.current.muted) playSent()
@@ -486,7 +488,9 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
               <ContactBox
                 online={online}
                 saved={saved}
-                editing={editing || !(saved.name || saved.email || saved.phone)}
+                // Open while we have nothing, and while we are away with no way
+                // to reach them: a name alone is not somewhere to send a reply.
+                editing={editing || !(saved.name || saved.email || saved.phone) || (!online && !saved.email && !saved.phone)}
                 canCancel={editing}
                 name={name}
                 email={email}

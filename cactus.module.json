@@ -1,6 +1,6 @@
 {
   "name": "chat",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "tablePrefix": "chat_",
   "notificationKinds": [
     {"id": "waiting", "label": "Live chats waiting for a reply", "description": "Visitors are waiting for somebody to answer them.", "dedupePrefix": "chat:unread"},

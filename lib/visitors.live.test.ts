@@ -178,7 +178,8 @@ suite('visitors leaving the site, against a real database', () => {
     expect(one?.waitingSince).toBeNull()
     expect(one?.visitorOnline).toBeNull()
 
-    await db.insertMessage({ conversationId: chatId, sender: 'agent', authorName: 'Sam', body: 'Here!' })
+    // A colleague's reply, so it carries their id - an automatic message does not answer anybody.
+    await db.insertMessage({ conversationId: chatId, sender: 'agent', authorUserId: 'u1', authorName: 'Sam', body: 'Here!' })
     one = await db.getConversation(chatId)
     expect(one?.agentTyping).toBeNull()
     expect(one?.visitorTyping).toBe(true)

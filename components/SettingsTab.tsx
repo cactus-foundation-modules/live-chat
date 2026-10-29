@@ -105,6 +105,20 @@ export function ChatSettingsTab() {
         <p className="field-hint">Shown instead of the greeting while you are set to offline. The Online/Offline switch lives on the Inbox tab and on the bubble you see when signed in.</p>
       </div>
 
+      <label className="settings-check">
+        <input type="checkbox" checked={settings.offlineNoticeEnabled} onChange={(e) => set('offlineNoticeEnabled', e.target.checked)} />
+        Tell a visitor when we have gone offline part way through their chat
+      </label>
+      <div className="field">
+        <label htmlFor="chat-offline-notice">Message when we have gone offline since</label>
+        <textarea id="chat-offline-notice" rows={3} maxLength={300} value={settings.offlineNoticeMessage} onChange={(e) => set('offlineNoticeMessage', e.target.value)} />
+        <p className="field-hint">
+          Sent once, under the name on automatic messages, when a visitor writes to a chat one of you has already answered while you are set to offline.
+          If we have no email address or phone number for them, it goes on to ask for one so you can reply later, and their chat window opens the box to fill them in;
+          if we do, it says that is where you will reply.
+        </p>
+      </div>
+
       <h3 className="card-title" style={{ marginTop: 'var(--space-6)' }}>Visitors and cookies</h3>
       {settings.consentGate === 'none' ? (
         <div className="alert alert-warning" role="status">

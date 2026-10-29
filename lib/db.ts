@@ -172,7 +172,7 @@ export async function listConversations(status: ChatStatus, limit = 100): Promis
     SELECT c.*, v."last_seen_at" AS v_last_seen_at, v."left_at" AS v_left_at,
       (SELECT MIN(m."created_at") FROM "chat_messages" m
         WHERE m."conversation_id" = c."id" AND m."sender" = 'visitor'
-          AND m."id" > COALESCE((SELECT MAX(a."id") FROM "chat_messages" a WHERE a."conversation_id" = c."id" AND a."sender" = 'agent'), 0)
+          AND m."id" > COALESCE((SELECT MAX(a."id") FROM "chat_messages" a WHERE a."conversation_id" = c."id" AND a."sender" = 'agent' AND a."author_user_id" IS NOT NULL), 0)
       ) AS waiting_since
     FROM "chat_conversations" c
     LEFT JOIN "chat_visitors" v ON v."id" = c."visitor_id"
