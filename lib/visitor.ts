@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import type { NextRequest } from 'next/server'
 import { VISITOR_HEADER } from './constants'
 import { getConversation, getTokenHash, type ChatConversation } from './db'
+import { derivationSalt, signatureKeys, verifyWithAnyKey } from '@/lib/crypto/keyring'
 
 // A visitor proves a chat is theirs with a secret their browser was handed when
 // the chat began: "<conversation id>.<secret>" in a header on every request.
@@ -20,9 +21,11 @@ export function hashSecret(secret: string): string {
 }
 
 /** A one-way, salted hash of the visitor's address, so a burst of new chats
- *  from one place can be counted without keeping anybody's address. */
+ *  from one place can be counted without keeping anybody's address. Salted with
+ *  the site's stable id salt (core's derivationSalt), which started out as the
+ *  encryption key's own value, so no hash changes when the key does. */
 export function hashIp(ip: string): string {
-  return createHash('sha256').update(`${process.env.ENCRYPTION_KEY ?? ''}:chat-ip:${ip}`).digest('hex').slice(0, 32)
+  return createHash('sha256').update(`${derivationSalt() ?? ''}:chat-ip:${ip}`).digest('hex').slice(0, 32)
 }
 
 function parseClaim(value: string | null): { id: string; secret: string } | null {
@@ -50,13 +53,26 @@ export async function visitorConversation(request: NextRequest): Promise<ChatCon
 // Attachment links a visitor can open without sending a header: a signature
 // over the attachment id, so a link works for whoever was given it and nobody
 // can make one up.
+//
+// Signed with the site's active key and checked against every key it has had,
+// so a link sent before a key rotation still opens. A site with no key at all
+// signs with a fixed word, as it always has: weak, but no weaker than before.
+const NO_KEY = 'chat'
+
+function signWith(key: string, attachmentId: string): string {
+  return createHmac('sha256', key).update(`chat-attachment:${attachmentId}`).digest('base64url').slice(0, 32)
+}
+
 export function attachmentSignature(attachmentId: string): string {
-  return createHmac('sha256', process.env.ENCRYPTION_KEY ?? 'chat').update(`chat-attachment:${attachmentId}`).digest('base64url').slice(0, 32)
+  return signWith(signatureKeys()[0] ?? NO_KEY, attachmentId)
 }
 
 export function attachmentSignatureValid(attachmentId: string, sig: string | null): boolean {
   if (!sig) return false
-  const want = Buffer.from(attachmentSignature(attachmentId))
-  const given = Buffer.from(sig)
-  return want.length === given.length && timingSafeEqual(want, given)
+  if (signatureKeys().length === 0) {
+    const want = Buffer.from(signWith(NO_KEY, attachmentId))
+    const given = Buffer.from(sig)
+    return want.length === given.length && timingSafeEqual(want, given)
+  }
+  return verifyWithAnyKey(sig, (key) => signWith(key, attachmentId))
 }

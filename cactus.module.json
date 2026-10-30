@@ -1,13 +1,13 @@
 {
   "name": "chat",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "tablePrefix": "chat_",
   "notificationKinds": [
     {"id": "waiting", "label": "Live chats waiting for a reply", "description": "Visitors are waiting for somebody to answer them.", "dedupePrefix": "chat:unread"},
     {"id": "visitor-arrived", "label": "New visitor on the site", "description": "Somebody new has turned up on the site. Browser alert only, it never sits in the list.", "dedupePrefix": "chat:visitor-arrived"}
   ],
   "description": "Live Chat - a small, quick chat bubble for your site, with attachments, browser notifications for visitors, emailed transcripts and replies from the admin, the site itself or the Unified Inbox.",
-  "requiresCoreVersion": "0.5.1828",
+  "requiresCoreVersion": "0.5.1904",
   "permissions": [
     "chat.view",
     "chat.reply",
