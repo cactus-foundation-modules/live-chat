@@ -36,6 +36,7 @@ const Body = z.object({
   autoMessageAuthor: z.string().trim().min(1).max(60),
   offlineNoticeEnabled: z.boolean(),
   offlineNoticeMessage: z.string().trim().min(1).max(300),
+  awayReplyMessage: z.string().trim().min(1).max(300),
 })
 
 export async function PUT(request: NextRequest) {

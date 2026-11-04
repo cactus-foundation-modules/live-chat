@@ -90,15 +90,18 @@ export async function POST(request: NextRequest) {
     const id = newConversationId()
     const secret = newSecret()
     const page = (form.fields.page ?? '').slice(0, 500)
+    const email = cleanEmail(form.fields.email)
+    const phone = cleanPhone(form.fields.phone)
     await createConversation({
       id,
       tokenHash: hashSecret(secret),
       name: cleanName(form.fields.name),
-      email: cleanEmail(form.fields.email),
-      phone: cleanPhone(form.fields.phone),
+      email,
+      phone,
       pageUrl: page.startsWith('/') ? page : null,
       ipHash,
     })
+    contact = { email, phone }
     claim = `${id}.${secret}`
     conversationId = id
     // A visitor already on the visitor list: their chat shows where they are.
@@ -128,10 +131,9 @@ export async function POST(request: NextRequest) {
   }
 
   const message = await insertMessage({ conversationId, sender: 'visitor', body, attachments })
-  // Written to a chat one of us was answering, after we went offline: say so,
-  // and ask how to reach them if we have no way to. A brand new chat opened on
-  // the away message already, so it never owes one.
-  const notice = claim ? null : await sendOfflineNoticeIfDue(conversationId, settings, contact)
+  // Written while we are offline: say so in the chat itself, brand new chats
+  // included, and ask how to reach them if we have no way to.
+  const notice = await sendOfflineNoticeIfDue(conversationId, settings, contact)
   after(async () => {
     await syncAgentAlert()
     await announce(conversationId)

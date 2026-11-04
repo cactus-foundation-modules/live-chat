@@ -25,13 +25,21 @@ export type ChatSettings = {
   welcomeDelaySeconds: number
   /** The name shown on the welcome and basket messages. */
   autoMessageAuthor: string
-  /** Post `offlineNoticeMessage` into a chat a colleague has answered when the
-   *  visitor writes again after we went offline. Once per offline spell. */
+  /** Reply automatically when a visitor writes while we are offline: with
+   *  `awayReplyMessage` in a chat nobody has answered yet, with
+   *  `offlineNoticeMessage` in one a colleague was answering. Once per offline spell. */
   offlineNoticeEnabled: boolean
   offlineNoticeMessage: string
+  awayReplyMessage: string
   /** Whether somebody is answering. Flipped by the switch, not by the settings form. */
   online: boolean
+  /** When the switch last went off; null while online, or when it went off
+   *  before this was recorded. */
+  offlineSince: Date | null
 }
+
+/** What the settings form saves: everything but the Online switch. */
+export type SavedChatSettings = Omit<ChatSettings, 'online' | 'offlineSince'>
 
 export const DEFAULT_SETTINGS: ChatSettings = {
   enabled: true,
@@ -53,7 +61,9 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   autoMessageAuthor: 'Our team',
   offlineNoticeEnabled: true,
   offlineNoticeMessage: 'Sorry - we have had to step away since we last spoke, so we cannot reply straight away.',
+  awayReplyMessage: 'Thanks for your message. We are away at the moment, so we cannot reply straight away.',
   online: true,
+  offlineSince: null,
 }
 
 export async function getChatSettings(): Promise<ChatSettings> {
@@ -82,14 +92,16 @@ export async function getChatSettings(): Promise<ChatSettings> {
     autoMessageAuthor: typeof r.auto_message_author === 'string' && r.auto_message_author.trim() ? r.auto_message_author : DEFAULT_SETTINGS.autoMessageAuthor,
     offlineNoticeEnabled: r.offline_notice_enabled !== false,
     offlineNoticeMessage: typeof r.offline_notice_message === 'string' && r.offline_notice_message.trim() ? r.offline_notice_message : DEFAULT_SETTINGS.offlineNoticeMessage,
+    awayReplyMessage: typeof r.away_reply_message === 'string' && r.away_reply_message.trim() ? r.away_reply_message : DEFAULT_SETTINGS.awayReplyMessage,
     online: r.agent_online !== false,
+    offlineSince: r.agent_online === false && r.agent_offline_at instanceof Date ? r.agent_offline_at : null,
   }
 }
 
-export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Promise<void> {
+export async function saveChatSettings(next: SavedChatSettings): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "auto_message_author", "offline_notice_enabled", "offline_notice_message", "updated_at")
-    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, ${next.autoMessageAuthor}, ${next.offlineNoticeEnabled}, ${next.offlineNoticeMessage}, now())
+    INSERT INTO "chat_settings" ("id", "enabled", "position", "bubble_label", "greeting", "transcripts", "retention_months", "hide_bubble_on_mobile", "away_label", "away_message", "track_visitors", "cart_message_enabled", "cart_message", "cart_message_delay_seconds", "welcome_enabled", "welcome_message", "welcome_delay_seconds", "auto_message_author", "offline_notice_enabled", "offline_notice_message", "away_reply_message", "updated_at")
+    VALUES ('singleton', ${next.enabled}, ${next.position}, ${next.bubbleLabel}, ${next.greeting}, ${next.transcripts}, ${next.retentionMonths}::int4, ${next.hideBubbleOnMobile}, ${next.awayLabel}, ${next.awayMessage}, ${next.trackVisitors}, ${next.cartMessageEnabled}, ${next.cartMessage}, ${next.cartMessageDelaySeconds}::int4, ${next.welcomeEnabled}, ${next.welcomeMessage}, ${next.welcomeDelaySeconds}::int4, ${next.autoMessageAuthor}, ${next.offlineNoticeEnabled}, ${next.offlineNoticeMessage}, ${next.awayReplyMessage}, now())
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = EXCLUDED."enabled",
       "position" = EXCLUDED."position",
@@ -110,15 +122,35 @@ export async function saveChatSettings(next: Omit<ChatSettings, 'online'>): Prom
       "auto_message_author" = EXCLUDED."auto_message_author",
       "offline_notice_enabled" = EXCLUDED."offline_notice_enabled",
       "offline_notice_message" = EXCLUDED."offline_notice_message",
+      "away_reply_message" = EXCLUDED."away_reply_message",
       "updated_at" = now()
   `
 }
 
 /** The online/offline switch. Its own write, so saving the settings form can
- *  never put somebody back online by accident. */
-export async function setChatOnline(online: boolean): Promise<void> {
-  await prisma.$executeRaw`
-    INSERT INTO "chat_settings" ("id", "agent_online", "updated_at") VALUES ('singleton', ${online}, now())
-    ON CONFLICT ("id") DO UPDATE SET "agent_online" = EXCLUDED."agent_online", "updated_at" = now()
+ *  never put somebody back online by accident. Returns when the offline spell
+ *  began if this press is the one that went offline, so the caller can tell
+ *  the visitors left waiting; null otherwise (going online, or pressing
+ *  Offline when already offline - that spell carries on). */
+export async function setChatOnline(online: boolean): Promise<Date | null> {
+  // The CTE reads the row as it was before this statement, so "was online"
+  // is the old value, not the one being written.
+  const rows = await prisma.$queryRaw<{ went_offline: boolean; offline_at: Date | null }[]>`
+    WITH before AS (SELECT "agent_online" FROM "chat_settings" WHERE "id" = 'singleton')
+    INSERT INTO "chat_settings" ("id", "agent_online", "agent_offline_at", "updated_at")
+    VALUES ('singleton', ${online}::boolean, CASE WHEN ${online}::boolean THEN NULL ELSE now() END, now())
+    ON CONFLICT ("id") DO UPDATE SET
+      "agent_online" = EXCLUDED."agent_online",
+      "agent_offline_at" = CASE
+        WHEN EXCLUDED."agent_online" THEN NULL
+        WHEN "chat_settings"."agent_online" THEN now()
+        ELSE COALESCE("chat_settings"."agent_offline_at", now())
+      END,
+      "updated_at" = now()
+    RETURNING
+      (NOT ${online}::boolean AND COALESCE((SELECT "agent_online" FROM before), true)) AS went_offline,
+      "agent_offline_at" AS offline_at
   `
+  const row = rows[0]
+  return row?.went_offline && row.offline_at ? row.offline_at : null
 }

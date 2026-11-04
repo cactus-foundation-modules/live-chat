@@ -107,15 +107,23 @@ export function ChatSettingsTab() {
 
       <label className="settings-check">
         <input type="checkbox" checked={settings.offlineNoticeEnabled} onChange={(e) => set('offlineNoticeEnabled', e.target.checked)} />
-        Tell a visitor when we have gone offline part way through their chat
+        Reply automatically when a visitor writes while you are offline
       </label>
+      <div className="field">
+        <label htmlFor="chat-away-reply">Reply to a chat nobody has answered yet</label>
+        <textarea id="chat-away-reply" rows={3} maxLength={300} value={settings.awayReplyMessage} onChange={(e) => set('awayReplyMessage', e.target.value)} />
+        <p className="field-hint">
+          Sent into the chat, under the name on automatic messages, when somebody writes to you while you are set to offline - their very first message included.
+          Once per offline spell: they hear again only after one of you has replied, or the next time you go offline. Chats left waiting when you press Offline get it there and then.
+        </p>
+      </div>
       <div className="field">
         <label htmlFor="chat-offline-notice">Message when we have gone offline since</label>
         <textarea id="chat-offline-notice" rows={3} maxLength={300} value={settings.offlineNoticeMessage} onChange={(e) => set('offlineNoticeMessage', e.target.value)} />
         <p className="field-hint">
-          Sent once, under the name on automatic messages, when a visitor writes to a chat one of you has already answered while you are set to offline.
-          If we have no email address or phone number for them, it goes on to ask for one so you can reply later, and their chat window opens the box to fill them in;
-          if we do, it says that is where you will reply.
+          The same, for a chat one of you was already answering. Held back while one of you has replied in that chat in the last ten minutes with the switch
+          still on Offline - somebody is plainly there. Both messages carry on the same way: if we have no email address or phone number for the visitor,
+          they ask for one so you can reply later, and the chat window opens the box to fill them in; if we do, they say that is where you will reply.
         </p>
       </div>
 
