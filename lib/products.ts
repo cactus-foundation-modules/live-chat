@@ -171,11 +171,27 @@ function optionParamKey(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+/** The query parameter the Unified Inbox carries a chosen delivery service in.
+ *  Not an option pick, so it is kept out of the picks below. */
+const DELIVERY_PARAM = 'delivery-service'
+const DELIVERY_KEY = /^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$/
+
+/** The delivery service a product link names, or null. */
+function deliveryFromAddress(address: string): string | null {
+  try {
+    const key = new URL(address).searchParams.get(DELIVERY_PARAM)?.trim() ?? ''
+    return DELIVERY_KEY.test(key) ? key : null
+  } catch {
+    return null
+  }
+}
+
 /** The picks a shared product link carries: `?seat-colour=oxford-blue&width=1600mm`. */
 function picksFromAddress(address: string): Map<string, string> {
   const picks = new Map<string, string>()
   try {
     new URL(address).searchParams.forEach((value, key) => {
+      if (key === DELIVERY_PARAM) return
       if (value && !picks.has(key)) picks.set(key, value)
     })
   } catch {
@@ -247,7 +263,11 @@ async function pickedVariations(listingId: string, picks: Map<string, string>): 
 /** One product by its slug, or null when it is not on sale: a listing in the
  *  catalogue, or a switched-on variation (a hidden row published at its own
  *  slug). Anything else hidden is hidden on purpose. */
-async function productBySlug(slug: string, s: Settings, picks: Map<string, string>): Promise<ChatProduct | null> {
+/** A product as a chat draws it, with the row its delivery is priced against:
+ *  the exact variation where the address names one, the listing otherwise. */
+type Found = { product: ChatProduct; id: string; taxClassId: unknown }
+
+async function productBySlug(slug: string, s: Settings, picks: Map<string, string>): Promise<Found | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT p."id", p."name", p."slug", p."price", p."sale_price", p."tax_class_id", p."catalogue_hidden",
            (SELECT m."url" FROM "shp_product_media" m
@@ -288,7 +308,7 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
     if (!found[0]) return null
     const options = found[0].options?.trim() || null
     const imageUrl = base.imageUrl ?? absoluteImage(found[0].listing_image, s.siteUrl)
-    return { ...base, imageUrl, options, price: priceLine(own, false, row.tax_class_id, s) }
+    return { id, taxClassId: row.tax_class_id, product: { ...base, imageUrl, options, price: priceLine(own, false, row.tax_class_id, s) } }
   }
 
   // A listing with variations is quoted from its cheapest switched-on one, as
@@ -302,11 +322,15 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
       const [first] = picked.rows
       if (first && picked.rows.length === 1) {
         return {
-          url: pageOf(first.slug, s),
-          name: first.name || base.name,
-          imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
-          options: (first.pairs ?? []).map((p) => p[2]).join(' / ') || null,
-          price: priceLine(charged(first.price, first.sale_price, s.saleEnabled), false, first.tax_class_id, s),
+          id: first.id,
+          taxClassId: first.tax_class_id,
+          product: {
+            url: pageOf(first.slug, s),
+            name: first.name || base.name,
+            imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
+            options: (first.pairs ?? []).map((p) => p[2]).join(' / ') || null,
+            price: priceLine(charged(first.price, first.sale_price, s.saleEnabled), false, first.tax_class_id, s),
+          },
         }
       }
       if (first) {
@@ -317,11 +341,15 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
           .map((m) => `${encodeURIComponent(optionParamKey(m[0]))}=${encodeURIComponent(m[2])}`)
           .join('&')
         return {
-          ...base,
-          url: `${base.url}?${query}`,
-          imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
-          options: picked.matched.map((m) => m[1]).join(' / ') || null,
-          price: priceLine(cheapest, Math.max(...prices) - cheapest > 0.005, row.tax_class_id, s),
+          id,
+          taxClassId: row.tax_class_id,
+          product: {
+            ...base,
+            url: `${base.url}?${query}`,
+            imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
+            options: picked.matched.map((m) => m[1]).join(' / ') || null,
+            price: priceLine(cheapest, Math.max(...prices) - cheapest > 0.005, row.tax_class_id, s),
+          },
         }
       }
     }
@@ -348,10 +376,42 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
     const cheapest = toNumber(range[0]?.cheapest)
     if (cheapest !== null) {
       const varies = (toNumber(range[0]?.dearest) ?? cheapest) - cheapest > 0.005
-      return { ...base, options: null, price: priceLine(cheapest, varies, row.tax_class_id, s) }
+      return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(cheapest, varies, row.tax_class_id, s) } }
     }
   }
-  return { ...base, options: null, price: priceLine(own, false, row.tax_class_id, s) }
+  return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(own, false, row.tax_class_id, s) } }
+}
+
+/**
+ * The delivery service a link names, priced for this product as the shop would
+ * quote it today, or null where it is no longer offered for it.
+ *
+ * Read from whichever module publishes delivery services at
+ * `shop.product-delivery-timing`, through core's generated registry rather than
+ * an import - chat must build on a site with no such module, where the point is
+ * simply empty. The figure arrives on the product's own side of tax and is taxed
+ * at the product's own rate, so it is priced exactly as the product is.
+ */
+async function deliveryFor(key: string, found: Found, s: Settings): Promise<{ label: string; price: string } | null> {
+  const { modulePublicExtensionPointComponents } = await import('@/lib/modules/extension-points.public')
+  const registered: Record<string, unknown> = modulePublicExtensionPointComponents['shop.product-delivery-timing'] ?? {}
+  const provider = Object.values(registered).find(
+    (entry): entry is (ids: string[]) => Promise<Map<string, unknown>> => typeof entry === 'function',
+  )
+  if (!provider) return null
+  const answered = await provider([found.id])
+  const timing = answered instanceof Map ? answered.get(found.id) : null
+  const options = timing && typeof timing === 'object' ? (timing as Record<string, unknown>).options : null
+  for (const entry of Array.isArray(options) ? options : []) {
+    if (!entry || typeof entry !== 'object') continue
+    const option = entry as Record<string, unknown>
+    if (option.key !== key) continue
+    const label = typeof option.label === 'string' ? option.label.trim() : ''
+    const amount = typeof option.price === 'number' && Number.isFinite(option.price) ? option.price : null
+    if (!label || amount === null || amount < 0) return null
+    return { label, price: priceLine(amount, false, found.taxClassId, s) ?? 'Free' }
+  }
+  return null
 }
 
 /**
@@ -381,7 +441,17 @@ export async function productsForTexts(texts: readonly string[]): Promise<Map<st
     const settings = await readSettings()
     for (const address of missing.slice(0, 20)) {
       const slug = settings ? slugFromAddress(address, settings.siteUrl, settings.rootStyle) : null
-      const product = slug && settings ? await productBySlug(slug, settings, picksFromAddress(address)) : null
+      const found = slug && settings ? await productBySlug(slug, settings, picksFromAddress(address)) : null
+      const key = found ? deliveryFromAddress(address) : null
+      // A delivery that cannot be looked up costs the card its delivery line,
+      // never the card.
+      const delivery = found && key && settings
+        ? await deliveryFor(key, found, settings).catch((err: unknown) => {
+          console.error('[chat] could not look up a delivery service in a chat:', err)
+          return null
+        })
+        : null
+      const product = found ? (key ? { ...found.product, delivery } : found.product) : null
       if (cache.size >= CACHE_MAX) cache.clear()
       cache.set(address, { at: now, product })
       if (product) out.set(address, product)

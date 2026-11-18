@@ -68,6 +68,7 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-product-words strong{font-weight:600;text-decoration:underline}
 .cch-product-opts{font-size:13px;color:var(--color-text-secondary)}
 .cch-product-price{font-size:14px;font-weight:600}
+.cch-product-delivery{font-size:13px;color:var(--color-text-secondary)}
 .cch-file{display:block;margin-top:6px}
 .cch-file img{display:block;max-width:220px;max-height:220px;border-radius:8px}
 .cch-contact{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:8px 14px;background:var(--color-surface);border-bottom:1px solid var(--color-border);font-size:13px;flex:none;position:sticky;top:0;z-index:1}
@@ -359,6 +360,9 @@ function ProductCard({ product }: { product: ChatProduct }) {
         <strong>{product.name}</strong>
         {product.options ? <span className="cch-product-opts">{product.options}</span> : null}
         {product.price ? <span className="cch-product-price">{product.price}</span> : null}
+        {product.delivery
+          ? <span className="cch-product-delivery">Delivery: {product.delivery.label} - {product.delivery.price}</span>
+          : null}
       </span>
     </a>
   )

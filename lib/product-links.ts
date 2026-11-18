@@ -22,6 +22,18 @@ export type ChatProduct = {
   /** 'From £419.00 + VAT', '£249.00', or null with nothing worth quoting. */
   price: string | null
   imageUrl: string | null
+  /** The delivery service quoted beside it, where the address names one (the
+   *  Unified Inbox puts `delivery-service=<key>` on a product it sends with a
+   *  delivery chosen) and the shop still offers it for this product. Priced
+   *  today, like the product: '£25.00 + VAT', or 'Free'. */
+  delivery?: { label: string; price: string } | null
+}
+
+/** The line the Unified Inbox prints a chosen delivery as, under the product:
+ *  'Delivery: Express flat-pack - £25.00 + VAT'. Restated rather than imported
+ *  - chat does not need the inbox - and only ever used to recognise it. */
+export function deliveryLine(delivery: { label: string; price: string }): string {
+  return `Delivery: ${delivery.label} - ${delivery.price}`
 }
 
 export type MessagePart = string | { label: string; url: string } | { product: ChatProduct }
@@ -51,23 +63,36 @@ export function productAddressesIn(text: string): string[] {
   return out
 }
 
+/** What the Unified Inbox writes after a product's link, longest first, so the
+ *  card can take its place: ` - £249.00`, and the delivery line under it where
+ *  one was chosen. */
+function inboxTails(product: ChatProduct): string[] {
+  const price = product.price ? ` - ${product.price}` : ''
+  const delivery = product.delivery ? `\n${deliveryLine(product.delivery)}` : ''
+  return delivery ? [price + delivery, price] : [price]
+}
+
 /**
  * The message cut into words, links and products, in order.
  *
  * A product swallows the line break either side of it, because it is drawn as
  * a block of its own and a block between two blank lines is a gap nobody typed.
  * It also swallows the " - £249.00" the inbox prints after a product's name,
- * but only when that is the price it is about to show anyway: anything else
- * after the dash is something somebody wrote.
+ * and the "Delivery: ..." line under it, but only when that is what it is about
+ * to show anyway: anything else after the dash is something somebody wrote.
  */
 export function splitMessage(text: string, products: Readonly<Record<string, ChatProduct>>): MessagePart[] {
   const out: MessagePart[] = []
-  let eatLeading: string | null = null
+  let eatLeading: string[] | null = null
 
   const pushText = (value: string) => {
     let words = value
     if (eatLeading !== null) {
-      if (eatLeading && words.startsWith(eatLeading)) words = words.slice(eatLeading.length)
+      // The longest tail that is really there: the price and the delivery line,
+      // else the price alone - a delivery whose price has moved since the
+      // message went is something the card already says better.
+      const tail = eatLeading.find((t) => t && words.startsWith(t))
+      if (tail) words = words.slice(tail.length)
       words = words.replace(/^\n/, '')
       eatLeading = null
     }
@@ -76,7 +101,7 @@ export function splitMessage(text: string, products: Readonly<Record<string, Cha
     if (typeof last === 'string') out[out.length - 1] = last + words
     else out.push(words)
   }
-  const pushProduct = (product: ChatProduct, tail: string) => {
+  const pushProduct = (product: ChatProduct, tail: string[]) => {
     const last = out[out.length - 1]
     if (typeof last === 'string') {
       const trimmed = last.replace(/\n$/, '')
@@ -90,7 +115,7 @@ export function splitMessage(text: string, products: Readonly<Record<string, Cha
   for (const part of splitLinks(text)) {
     if (typeof part !== 'string') {
       const product = products[part.url]
-      if (product) pushProduct(product, product.price ? ` - ${product.price}` : '')
+      if (product) pushProduct(product, inboxTails(product))
       else {
         eatLeading = null
         out.push(part)
@@ -102,7 +127,7 @@ export function splitMessage(text: string, products: Readonly<Record<string, Cha
       const product = products[url]
       if (!product) continue
       pushText(part.slice(from, at))
-      pushProduct(product, '')
+      pushProduct(product, [])
       from = at + url.length
     }
     pushText(part.slice(from))
@@ -143,6 +168,13 @@ function productHtml(product: ChatProduct): string {
   const options = product.options
     ? `<br /><span style="color:#666666;font-size:13px;">${escapeHtml(product.options)}</span>`
     : ''
+  const delivery = product.delivery
+    ? '<tr>' +
+      (product.imageUrl ? '<td width="64" style="width:64px;padding:0 12px 0 0;">&nbsp;</td>' : '') +
+      `<td style="padding:0 0 8px;font-size:14px;line-height:1.45;color:#666666;">Delivery: ${escapeHtml(product.delivery.label)}</td>` +
+      `<td align="right" style="padding:0 0 8px 12px;font-size:14px;line-height:1.45;color:#666666;white-space:nowrap;">${escapeHtml(product.delivery.price)}</td>` +
+      '</tr>'
+    : ''
   return (
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
     'style="border-collapse:collapse;width:100%;margin:8px 0;"><tr>' +
@@ -150,6 +182,6 @@ function productHtml(product: ChatProduct): string {
     `<td style="${cell}"><strong><a href="${href}" target="_blank" rel="noopener noreferrer" ` +
     `style="color:#333333;text-decoration:underline;">${escapeHtml(product.name)}</a></strong>${options}</td>` +
     `<td align="right" style="${cell}padding-left:12px;white-space:nowrap;">${escapeHtml(product.price ?? '')}</td>` +
-    '</tr></table>'
+    '</tr>' + delivery + '</table>'
   )
 }

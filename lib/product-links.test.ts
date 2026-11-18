@@ -60,3 +60,32 @@ describe('slugFromAddress', () => {
     expect(slugFromAddress('https://example.com/a/b', 'https://example.com', true)).toBeNull()
   })
 })
+
+describe('a delivery quoted beside a product', () => {
+  const address = 'https://example.com/oslo-chair?delivery-service=express'
+  const withDelivery: ChatProduct = { ...OSLO, url: 'https://example.com/oslo-chair', delivery: { label: 'Express', price: '£25.00 + VAT' } }
+
+  it('swallows the inbox delivery line under the card that already shows it', () => {
+    const text = `Try this:\n[Oslo Chair](${address}) - £99.00\nDelivery: Express - £25.00 + VAT\nAny questions, shout.`
+    expect(splitMessage(text, { [address]: withDelivery })).toEqual([
+      'Try this:',
+      { product: withDelivery },
+      'Any questions, shout.',
+    ])
+  })
+
+  it('keeps a delivery line that no longer matches, under the price it does eat', () => {
+    const text = `[Oslo Chair](${address}) - £99.00\nDelivery: Express - £20.00`
+    expect(splitMessage(text, { [address]: withDelivery })).toEqual([
+      { product: withDelivery },
+      'Delivery: Express - £20.00',
+    ])
+  })
+
+  it('draws the delivery as its own row in the inbox', () => {
+    const html = messageHtml(`[Oslo Chair](${address}) - £99.00`, { [address]: withDelivery }) ?? ''
+    expect(html).toContain('Delivery: Express')
+    expect(html).toContain('£25.00 + VAT')
+  })
+})
+
