@@ -5,6 +5,7 @@ import { errorResponse } from '@/lib/utils'
 import { runAutoMessages } from '@/modules/chat/lib/auto-messages'
 import { pushNewVisitor } from '@/modules/chat/lib/notify'
 import { getChatSettings } from '@/modules/chat/lib/settings'
+import { visitorAnswering } from '@/modules/chat/lib/responder'
 import { getConsentState, mayTrack } from '@/modules/chat/lib/consent'
 import { hashIp, hashSecret, newConversationId, newSecret, visitorConversation } from '@/modules/chat/lib/visitor'
 import {
@@ -92,10 +93,14 @@ export async function POST(request: NextRequest) {
   const conversation = await visitorConversation(request)
   if (conversation && !conversation.visitorId) await linkConversationToVisitor(conversation.id, claim.id)
 
+  // Whether anybody is answering this visitor: the switch, or another module
+  // answering chats. Asked once, for the answer below and the messages here.
+  const answering = await visitorAnswering(settings.online, claim.id)
+
   // The owner's own messages (a welcome, a basket nudge), once per visitor,
   // while somebody is answering and they have no chat going. When one is not
   // due yet the answer says when, so the widget checks in again at that moment.
-  const recheckInMs = conversation ? undefined : await runAutoMessages(claim.id, path, settings, input.cartAdded === true)
+  const recheckInMs = conversation ? undefined : await runAutoMessages(claim.id, path, settings, input.cartAdded === true, answering)
 
   const chatId = await openChatWeStarted(claim.id)
   return NextResponse.json(
@@ -105,7 +110,7 @@ export async function POST(request: NextRequest) {
       // The widget makes the chat's claim itself, from the secret it already
       // holds: this never sends a secret, only which chat to claim with it.
       chat: chatId,
-      online: settings.online,
+      online: answering.online,
       recheckInMs,
     },
     { headers: noStore },

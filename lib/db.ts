@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { previewOf } from './text'
-import { ONLINE_WINDOW_SECONDS, TYPING_WINDOW_MS } from './constants'
+import { ONLINE_WINDOW_SECONDS, RESPONDER_AUTHOR_PREFIX, TYPING_WINDOW_MS } from './constants'
 
 // ---------------------------------------------------------------------------
 // Every read and write of the chat_ tables. Raw SQL because the tables belong
@@ -52,6 +52,10 @@ export type ChatMessage = {
   id: number
   conversationId: string
   sender: ChatSender
+  /** Who wrote it on our side: a colleague's user id, a module's
+   *  "module:<name>" (see lib/responder.ts), or null for the automatic
+   *  messages and anything the visitor sent. Never assume it is a user. */
+  authorUserId: string | null
   authorName: string | null
   body: string
   createdAt: Date
@@ -119,6 +123,7 @@ function toMessage(r: Row): ChatMessage {
     id: Number(r.id),
     conversationId: String(r.conversation_id),
     sender,
+    authorUserId: (r.author_user_id as string | null) ?? null,
     authorName: (r.author_name as string | null) ?? null,
     body: (r.body as string | null) ?? '',
     createdAt: r.created_at as Date,
@@ -166,7 +171,8 @@ export async function getTokenHash(id: string): Promise<string | null> {
  *  added to since - no word from the visitor, no reply from a colleague - is
  *  only listed while that visitor is on the site. Once they leave it drops out,
  *  and it comes back by itself if they return; it is not deleted, so their
- *  browser still finds it. */
+ *  browser still finds it. A message from another module answering chats
+ *  (author "module:...") is not a colleague's, so it keeps nothing listed. */
 export async function listConversations(status: ChatStatus, limit = 100): Promise<ChatConversation[]> {
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT c.*, v."last_seen_at" AS v_last_seen_at, v."left_at" AS v_left_at,
@@ -182,7 +188,7 @@ export async function listConversations(status: ChatStatus, limit = 100): Promis
         AND (v."id" IS NULL OR v."left_at" IS NOT NULL OR v."last_seen_at" <= now() - make_interval(secs => ${ONLINE_WINDOW_SECONDS}::int4))
         AND NOT EXISTS (
           SELECT 1 FROM "chat_messages" h WHERE h."conversation_id" = c."id"
-            AND (h."sender" = 'visitor' OR (h."sender" = 'agent' AND h."author_user_id" IS NOT NULL))
+            AND (h."sender" = 'visitor' OR (h."sender" = 'agent' AND h."author_user_id" IS NOT NULL AND h."author_user_id" NOT LIKE ${RESPONDER_AUTHOR_PREFIX + '%'}))
         )
       )
     ORDER BY c."last_message_at" DESC LIMIT ${limit}
@@ -271,6 +277,34 @@ export async function markReadByAgents(id: string): Promise<void> {
   `
 }
 
+/** Counts this chat as waiting on a colleague again, as a visitor's message
+ *  does: one more unread for agents. Only an open chat. Returns whether it was. */
+export async function addUnreadForAgents(id: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    UPDATE "chat_conversations" SET "unread_for_agents" = "unread_for_agents" + 1, "updated_at" = now()
+    WHERE "id" = ${id} AND "status" = 'open'
+    RETURNING "id"
+  `
+  return rows.length > 0
+}
+
+/** Nobody on our side is typing in this chat any more. */
+export async function clearAgentTyping(id: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "chat_conversations" SET "agent_typing_at" = NULL, "agent_typing_name" = NULL
+    WHERE "id" = ${id} AND "agent_typing_at" IS NOT NULL
+  `
+}
+
+/** The open chats, newest first, by id only. */
+export async function listOpenConversationIds(limit = 500): Promise<string[]> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "chat_conversations" WHERE "status" = 'open'
+    ORDER BY "last_message_at" DESC LIMIT ${limit}
+  `
+  return rows.map((r) => r.id)
+}
+
 export async function markReadByVisitor(id: string): Promise<void> {
   await prisma.$executeRaw`
     UPDATE "chat_conversations" SET "unread_for_visitor" = 0
@@ -345,6 +379,10 @@ export type NewAttachment = {
  * newest-message time, preview, and the unread count of whichever side did not
  * write it, and that side's "typing…" (the message it was typing has arrived).
  * A message on a closed chat opens it again.
+ *
+ * `countUnread: false` saves a visitor's message without counting it as unread
+ * for agents yet: the caller decides that a moment later (lib/visitor-message.ts,
+ * while another module is offered the reply). Everything else moves as usual.
  */
 export async function insertMessage(data: {
   conversationId: string
@@ -353,10 +391,12 @@ export async function insertMessage(data: {
   authorName?: string | null
   body: string
   attachments?: NewAttachment[]
+  countUnread?: boolean
 }): Promise<ChatMessage> {
   const attachments = data.attachments ?? []
   const preview = previewOf(data.body) ?? (attachments[0] ? `📎 ${attachments[0].filename}` : null)
   const toAgents = data.sender === 'visitor' ? 1 : 0
+  const unreadToAgents = data.countUnread === false ? 0 : toAgents
   const toVisitor = data.sender === 'agent' ? 1 : 0
 
   return prisma.$transaction(async (tx) => {
@@ -380,7 +420,7 @@ export async function insertMessage(data: {
         UPDATE "chat_conversations" SET
           "last_message_at" = now(),
           "last_message_preview" = ${preview},
-          "unread_for_agents" = "unread_for_agents" + ${toAgents}::int4,
+          "unread_for_agents" = "unread_for_agents" + ${unreadToAgents}::int4,
           "unread_for_visitor" = "unread_for_visitor" + ${toVisitor}::int4,
           "status" = 'open',
           "closed_at" = NULL,

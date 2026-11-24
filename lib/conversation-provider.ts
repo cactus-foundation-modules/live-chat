@@ -20,6 +20,7 @@ import { sendAgentReply } from './reply'
 import { syncAgentAlert } from './notify'
 import { messageHtml, type ChatProduct } from './product-links'
 import { productsForTexts } from './products'
+import { responderLabelFor } from './responder'
 
 // Live chats published as plain data, so the Unified Inbox (or anything else
 // reading core.conversation-provider) can list them beside email and answer
@@ -43,13 +44,21 @@ function toSummary(c: ChatConversation): ConversationSummary {
   }
 }
 
-function toMessage(m: ChatMessage, products: Readonly<Record<string, ChatProduct>>): ConversationMessage {
+function toMessage(
+  m: ChatMessage,
+  products: Readonly<Record<string, ChatProduct>>,
+  labelled: { authorId: string; label: string } | null,
+): ConversationMessage {
+  // The inbox shows an author's name and nothing else, so the badge another
+  // module answering chats puts on its messages (lib/responder.ts) rides in
+  // the name: "Name (Label)".
+  const label = labelled && m.authorUserId === labelled.authorId ? labelled.label : null
   return {
     id: String(m.id),
     // A system line ("the visitor ended the chat") is our own remark, and must
     // never read as something the visitor was sent.
     direction: m.sender === 'visitor' ? 'in' : m.sender === 'agent' ? 'out' : 'note',
-    authorName: m.sender === 'system' ? null : m.authorName,
+    authorName: m.sender === 'system' ? null : label ? `${m.authorName ?? 'Us'} (${label})` : m.authorName,
     text: m.body,
     html: messageHtml(m.body, products),
     sentAt: m.createdAt,
@@ -75,8 +84,9 @@ async function thread(id: string): Promise<ConversationThread | null> {
   const conversation = await getConversation(id)
   if (!conversation) return null
   const messages = await listMessages(id)
-  const products = Object.fromEntries(await productsForTexts(messages.map((m) => m.body)))
-  return { summary: toSummary(conversation), messages: messages.map((m) => toMessage(m, products)) }
+  const [found, labelled] = await Promise.all([productsForTexts(messages.map((m) => m.body)), responderLabelFor(messages)])
+  const products = Object.fromEntries(found)
+  return { summary: toSummary(conversation), messages: messages.map((m) => toMessage(m, products, labelled)) }
 }
 
 async function send(id: string, body: { text: string; authorUserId: string }): Promise<void> {

@@ -5,6 +5,7 @@ import { cartTotal, type CartLine, type TrailPage } from './trail'
 import { attachmentSignature } from './visitor'
 import { productAddressesIn, type ChatProduct } from './product-links'
 import { productsForTexts } from './products'
+import { responderLabelFor } from './responder'
 
 // What a browser is handed. The visitor's copy carries signed attachment links
 // (they have no session to be checked against); the admin's copy does not need
@@ -21,6 +22,10 @@ export type ClientMessage = {
   /** The product pages in the body, drawn as products, keyed by the address as
    *  it was written. Only what is in this message. */
   products: Record<string, ChatProduct>
+  /** A short badge beside the author's name, on messages written by another
+   *  module answering chats (lib/responder.ts) when it gives one. Absent
+   *  otherwise. */
+  label?: string
 }
 export type ClientConversation = {
   id: string
@@ -71,16 +76,18 @@ export type ClientListedVisitor = ClientVisitor & {
   unread: number
 }
 
-/** Messages for a browser, with the products in them looked up in one go. */
+/** Messages for a browser, with the products in them looked up in one go, and
+ *  the responder's label (when any message is its own) asked for once. */
 export async function clientMessages(list: readonly ChatMessage[], forVisitor: boolean): Promise<ClientMessage[]> {
-  const found = await productsForTexts(list.map((m) => m.body))
-  return list.map((m) => clientMessage(m, forVisitor, found))
+  const [found, labelled] = await Promise.all([productsForTexts(list.map((m) => m.body)), responderLabelFor(list)])
+  return list.map((m) => clientMessage(m, forVisitor, found, labelled))
 }
 
 export function clientMessage(
   m: ChatMessage,
   forVisitor: boolean,
   found: ReadonlyMap<string, ChatProduct> = new Map(),
+  labelled: { authorId: string; label: string } | null = null,
 ): ClientMessage {
   const products: Record<string, ChatProduct> = {}
   if (found.size > 0) {
@@ -102,6 +109,7 @@ export function clientMessage(
         : `${API_BASE}/attachments/${a.id}`,
     })),
     products,
+    ...(labelled && m.authorUserId === labelled.authorId ? { label: labelled.label } : {}),
   }
 }
 

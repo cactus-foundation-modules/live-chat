@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma'
 import { insertMessage, type ChatMessage } from './db'
 import { pushToVisitor, announce } from './notify'
 import type { ChatSettings } from './settings'
+import { RESPONDER_AUTHOR_PREFIX } from './constants'
 
 // The automatic reply a visitor gets when they write to us while we are
 // offline. Two wordings: the away reply for a chat nobody has answered yet (a
@@ -66,12 +67,15 @@ async function claimOfflineNotice(conversationId: string, offlineSince: Date | n
               AND m."created_at" > c."offline_notice_at"
          )
        )
-       -- Nobody is answering with the switch left off.
+       -- Nobody is answering with the switch left off. A module answering
+       -- chats (author "module:...") is not somebody: it either takes the
+       -- message, and this is never asked, or it has stopped, and we are away.
        AND NOT EXISTS (
          SELECT 1 FROM "chat_messages" m
           WHERE m."conversation_id" = c."id"
             AND m."sender" = 'agent'
             AND m."author_user_id" IS NOT NULL
+            AND m."author_user_id" NOT LIKE ${RESPONDER_AUTHOR_PREFIX + '%'}
             AND m."created_at" > now() - make_interval(secs => ${ANSWERING_ANYWAY_MS / 1000}::int4)
             AND (${offlineSince}::timestamptz IS NULL OR m."created_at" > ${offlineSince}::timestamptz)
        )

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_BASE, TYPING_IDLE_MS } from '@/modules/chat/lib/constants'
 import type { ClientConversation, ClientMessage, ClientVisitor } from '@/modules/chat/lib/serialise'
-import { Composer, MessageList, TypingNote, mergeMessages, messageRequest, readError, timeLabel } from './ui'
+import type { ChatSlots } from '@/modules/chat/lib/slots'
+import { Composer, MessageList, SlotBoundary, TypingNote, mergeMessages, messageRequest, readError, timeLabel } from './ui'
 import { spanLabel, VisitorDetails } from './Visitors'
 import { NameOverrideButton } from './NameOverride'
 import { MuteButton, playSent, startAlert, stopAlert, useAdminMuted } from './sound'
@@ -144,7 +145,7 @@ function wideScreen(): boolean {
   try { return window.matchMedia('(min-width: 721px)').matches } catch { return false }
 }
 
-export function AgentThread({ id, canReply, canManage, onBack, onConversation, onDeleted, compact, othersWaiting = 0 }: {
+export function AgentThread({ id, canReply, canManage, onBack, onConversation, onDeleted, compact, othersWaiting = 0, conversationActions: ConversationActions = null }: {
   id: string
   canReply: boolean
   canManage?: boolean
@@ -155,6 +156,8 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
   compact?: boolean
   /** Other chats waiting on us, shown on the back arrow. */
   othersWaiting?: number
+  /** Another module's component for this chat's header (lib/slots.ts). */
+  conversationActions?: ChatSlots['conversationActions']
 }) {
   const [conversation, setConversation] = useState<ClientConversation | null>(null)
   const [visitor, setVisitor] = useState<ClientVisitor | null>(null)
@@ -276,6 +279,7 @@ export function AgentThread({ id, canReply, canManage, onBack, onConversation, o
           {visitor ? <span className={`cch-presence${visitor.online ? ' on' : ''}`} title={visitor.online ? 'On the site now' : 'Has left the site'} aria-hidden="true" /> : null}
           {who}
         </h2>
+        {conversation && ConversationActions && !gone ? <SlotBoundary><ConversationActions conversationId={id} status={conversation.status} /></SlotBoundary> : null}
         {conversation && canReply && open && !gone ? <button type="button" onClick={endChat}>End chat</button> : null}
         <MuteButton muted={muted} onToggle={toggleMute} />
         {canReply ? <NameOverrideButton /> : null}

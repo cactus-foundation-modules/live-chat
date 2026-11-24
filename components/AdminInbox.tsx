@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChatStyles } from './ui'
+import { ChatStyles, SlotBoundary } from './ui'
 import { AgentThread, ConversationList, useChatList, visitorName } from './AgentThread'
 import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
 import { useVisitors, visitorLabel, VisitorList, VisitorPanel } from './Visitors'
 import type { ClientConversation, ClientListedVisitor } from '@/modules/chat/lib/serialise'
+import type { ChatSlots } from '@/modules/chat/lib/slots'
 
 // The Live chat tab of the admin Inbox: chats down the side, the chosen one
 // beside them (one at a time on a phone). Everything keeps itself current -
@@ -30,7 +31,15 @@ function useTitleCount(unread: number) {
   useEffect(() => () => { document.title = document.title.replace(/^\(\d+\) /, '') }, [])
 }
 
-export function AdminInbox({ canReply, canManage, initialId, initialTab = 'open' }: { canReply: boolean; canManage: boolean; initialId: string | null; initialTab?: 'open' | 'visitors' }) {
+export function AdminInbox({ canReply, canManage, initialId, initialTab = 'open', adminToolbar: AdminToolbar = null, conversationActions = null }: {
+  canReply: boolean
+  canManage: boolean
+  initialId: string | null
+  initialTab?: 'open' | 'visitors'
+  /** Other modules' components for Live chat's slots (lib/slots.ts), picked on the server. */
+  adminToolbar?: ChatSlots['adminToolbar']
+  conversationActions?: ChatSlots['conversationActions']
+}) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const [active, setActive] = useState<string | null>(initialId)
   const [visitor, setVisitor] = useState<ClientListedVisitor | null>(null)
@@ -103,7 +112,13 @@ export function AdminInbox({ canReply, canManage, initialId, initialTab = 'open'
           <button type="button" role="tab" aria-selected={tab === 'visitors'} className={`cch-btn${tab === 'visitors' ? ' primary' : ''}`} onClick={() => setTab('visitors')}>
             On the site{visitors.loaded && !visitors.reason ? ` (${visitors.visitors.length})` : ''}
           </button>
-          {canReply ? <span style={{ marginLeft: 'auto' }}><AvailabilitySwitch online={availability.online} busy={availability.busy} onChange={availability.change} /></span> : null}
+          {canReply && !AdminToolbar ? <span style={{ marginLeft: 'auto' }}><AvailabilitySwitch online={availability.online} busy={availability.busy} onChange={availability.change} /></span> : null}
+          {AdminToolbar ? (
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {canReply ? <AvailabilitySwitch online={availability.online} busy={availability.busy} onChange={availability.change} /> : null}
+              <SlotBoundary><AdminToolbar surface="inbox" /></SlotBoundary>
+            </span>
+          ) : null}
         </div>
         <input
           className="cch-input cch-search"
@@ -138,6 +153,7 @@ export function AdminInbox({ canReply, canManage, initialId, initialTab = 'open'
             onDeleted={onDeleted}
             othersWaiting={othersWaiting}
             onBack={() => setActive(null)}
+            conversationActions={conversationActions}
           />
         ) : (
           <div className="cch-inbox-empty cch-muted">

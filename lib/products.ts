@@ -291,8 +291,9 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
   if (row.catalogue_hidden) {
     if (!s.variations) return null
     // A variation with no photograph of its own shows its listing's.
-    const found = await prisma.$queryRaw<{ options: string | null; listing_image: string | null }[]>`
-      SELECT (SELECT m."url" FROM "shp_product_media" m
+    const found = await prisma.$queryRaw<{ listing_id: string; options: string | null; listing_image: string | null }[]>`
+      SELECT v."product_id" AS "listing_id",
+             (SELECT m."url" FROM "shp_product_media" m
                WHERE m."product_id" = v."product_id" AND m."type" = 'IMAGE'
                ORDER BY m."is_primary" DESC, m."position" ASC
                LIMIT 1) AS "listing_image",
@@ -308,7 +309,8 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
     if (!found[0]) return null
     const options = found[0].options?.trim() || null
     const imageUrl = base.imageUrl ?? absoluteImage(found[0].listing_image, s.siteUrl)
-    return { id, taxClassId: row.tax_class_id, product: { ...base, imageUrl, options, price: priceLine(own, false, row.tax_class_id, s) } }
+    const basket = { productId: id, listingId: String(found[0].listing_id), needsChoice: false }
+    return { id, taxClassId: row.tax_class_id, product: { ...base, imageUrl, options, price: priceLine(own, false, row.tax_class_id, s), basket } }
   }
 
   // A listing with variations is quoted from its cheapest switched-on one, as
@@ -330,6 +332,7 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
             imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
             options: (first.pairs ?? []).map((p) => p[2]).join(' / ') || null,
             price: priceLine(charged(first.price, first.sale_price, s.saleEnabled), false, first.tax_class_id, s),
+            basket: { productId: first.id, listingId: id, needsChoice: false },
           },
         }
       }
@@ -349,6 +352,7 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
             imageUrl: absoluteImage(first.image_url, s.siteUrl) ?? base.imageUrl,
             options: picked.matched.map((m) => m[1]).join(' / ') || null,
             price: priceLine(cheapest, Math.max(...prices) - cheapest > 0.005, row.tax_class_id, s),
+            basket: { productId: id, listingId: id, needsChoice: true },
           },
         }
       }
@@ -376,10 +380,12 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
     const cheapest = toNumber(range[0]?.cheapest)
     if (cheapest !== null) {
       const varies = (toNumber(range[0]?.dearest) ?? cheapest) - cheapest > 0.005
-      return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(cheapest, varies, row.tax_class_id, s) } }
+      const basket = { productId: id, listingId: id, needsChoice: true }
+      return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(cheapest, varies, row.tax_class_id, s), basket } }
     }
   }
-  return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(own, false, row.tax_class_id, s) } }
+  const basket = { productId: id, listingId: id, needsChoice: false }
+  return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(own, false, row.tax_class_id, s), basket } }
 }
 
 /**

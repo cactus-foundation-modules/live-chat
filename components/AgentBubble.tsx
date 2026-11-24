@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { CHAT_OPEN_EVENT } from '@/modules/chat/lib/constants'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import type { ClientConversation, ClientListedVisitor } from '@/modules/chat/lib/serialise'
-import { BodyPortal, ChatStyles } from './ui'
+import type { ChatSlots } from '@/modules/chat/lib/slots'
+import { BodyPortal, ChatStyles, SlotBoundary } from './ui'
 import { AgentThread, ConversationList, useChatList, visitorName } from './AgentThread'
 import { AvailabilitySwitch, useAvailability } from './AvailabilitySwitch'
 import { NameOverrideButton } from './NameOverride'
+import { setVisitorView } from './visitor-view'
 import { useVisitors, VisitorList, VisitorPanel } from './Visitors'
 
 // What a colleague signed in to the admin sees on the public site instead of
@@ -18,7 +20,14 @@ import { useVisitors, VisitorList, VisitorPanel } from './Visitors'
 
 type Peek = { id: string; who: string; text: string }
 
-export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'left' | 'right'; canReply: boolean; hideOnMobile: boolean }) {
+export function AgentBubble({ position, canReply, hideOnMobile, adminToolbar: AdminToolbar = null, conversationActions = null }: {
+  position: 'left' | 'right'
+  canReply: boolean
+  hideOnMobile: boolean
+  /** Other modules' components for Live chat's slots (lib/slots.ts), picked on the server. */
+  adminToolbar?: ChatSlots['adminToolbar']
+  conversationActions?: ChatSlots['conversationActions']
+}) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState<string | null>(null)
   const [tab, setTab] = useState<'chats' | 'visitors'>('chats')
@@ -80,6 +89,7 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
                 onConversation={chats.patch}
                 onDeleted={chats.remove}
                 onBack={() => setActive(null)}
+                conversationActions={conversationActions}
               />
             ) : visitor ? (
               <VisitorPanel
@@ -95,7 +105,11 @@ export function AgentBubble({ position, canReply, hideOnMobile }: { position: 'l
                 <header className="cch-head">
                   <h2>Live chats{unread > 0 ? ` (${unread} waiting)` : ''}</h2>
                   {canReply ? <AvailabilitySwitch onDark online={availability.online} busy={availability.busy} onChange={availability.change} /> : null}
+                  {AdminToolbar ? <SlotBoundary><AdminToolbar surface="bubble" /></SlotBoundary> : null}
                   {canReply ? <NameOverrideButton /> : null}
+                  <button type="button" aria-label="See the chat as a visitor sees it" title="See the chat as a visitor sees it" onClick={() => setVisitorView(true)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+                  </button>
                   <button type="button" aria-label="Minimise" onClick={() => setOpen(false)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
                   </button>

@@ -42,6 +42,10 @@ own media storage (Backblaze on most sites).
 - **Answer from anywhere.** From *Inbox > Live chat* in the admin, from the
   bubble on the site itself while you are signed in, or from the Unified Inbox
   if you have it installed - new chats land there the moment they are sent.
+- **See it as a visitor does.** The eye in the bubble's header swaps a
+  signed-in colleague's view of the site for the visitor's own chat window,
+  so you can check the greeting and away message or send a test message the
+  way a visitor would. The people icon in that window takes you back.
 - **See who is on the site.** Everybody browsing who said yes to the Live chat
   cookies is listed while they are here, chatting or not: the page they are on,
   the pages they came through and, with the shop, what is in their basket. Say
@@ -110,3 +114,58 @@ you if your cookie banner is missing the Live chat switch.
 - Publishes `core.conversation-provider` and announces every new message with
   `core.conversation-arrived`, which is how the Unified Inbox gets it at once.
 - Needs `ENCRYPTION_KEY`. `CRON_SECRET` runs the nightly retention sweep.
+
+## Letting another module answer chats (for developers)
+
+Nothing here changes a site that runs Live Chat on its own: with no module
+plugged in, every screen and every message is exactly as described above. These
+are seams for a module that answers chats in its own way (an out-of-hours
+service, a queue, an assistant). None of them needs a table or column of ours.
+
+**`chat.responder`** (server, `serverOnly: true`). Publish one object; the
+contract is `ResponderContract` in `lib/responder.ts`:
+
+- `authorId` - a `module:<name>` string stored as the author of every message
+  the responder writes, so it can never be taken for a colleague.
+- `offerVisitorMessage({ conversationId, messageId, visitorId, online, newConversation })`
+  - offered each visitor message as it is saved. Return `true` to take the
+  reply (then do the slow work yourself, in `after()`): the chat is not counted
+  as waiting for a colleague and no offline reply goes. Anything else is a no,
+  and Live Chat carries on as normal.
+- `answeringAs({ online, visitorId })` - `{ authorName }` while you are
+  answering, else `null`. Asked only while the Online switch is off, and then
+  often (page renders, check-ins, open chat windows), so keep it cheap. A yes
+  shows visitors we are online and lets the welcome and basket messages go
+  under your name and `authorId`.
+- `colleagueReplied({ conversationId, userId })` - a person replied, from the
+  admin, the bubble on the site, the visitor list or the Unified Inbox.
+- `onlineChanged({ online, openConversationIds })` - return `{ covered: true }`
+  to stop Live Chat sending its "we have had to step away" message to visitors
+  left waiting when the switch goes off.
+- `messageLabel()` - a short badge for your messages (or `null`).
+
+Every call has two seconds. A throw, a timeout or an answer that does not parse
+counts as a no, so a responder having a bad day costs nobody their reply.
+
+**`lib/responder-api.ts`** is the one file a responder module imports (declare
+`requiresModules: chat`): `postResponderMessage`, `setResponderTyping`,
+`askForColleague` (counts the chat as waiting, lights the bell, chimes the
+admin list; it stays waiting until a colleague reads it), `endConversationAsAgent`,
+`getConversationForResponder` (the chat, every message, and the visitor's trail
+and basket when they are listed) and `readResponderAttachment`. Posting refuses
+an ended chat with `ChatEndedError`.
+
+**Client slots.** Publish a component from a `'use client'` file, outside
+`components/admin/` so it reaches the bubble on the site too. The first one
+registered at each point is drawn; one that throws is quietly left out. Prop
+types are in `lib/slots.ts`:
+
+| Point | Where | Props |
+| --- | --- | --- |
+| `chat.admin-toolbar` | beside the Online switch, admin chat window and site bubble | `{ surface: 'inbox' \| 'bubble' }` |
+| `chat.conversation-actions` | the header of the chat on screen, both places | `{ conversationId, status }` |
+| `chat.product-actions` | under a message with product cards, visitor's window only | `{ products: ChatProduct[] }` |
+
+Each `ChatProduct` carries `basket: { productId, listingId, needsChoice }`, the
+shop's own ids for adding exactly that product or variation, when the shop
+could say.

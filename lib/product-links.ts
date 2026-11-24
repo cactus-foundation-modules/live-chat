@@ -27,7 +27,17 @@ export type ChatProduct = {
    *  delivery chosen) and the shop still offers it for this product. Priced
    *  today, like the product: '£25.00 + VAT', or 'Free'. */
   delivery?: { label: string; price: string } | null
+  /** What a basket needs to add exactly this, in the shop's own ids: the row
+   *  to add (the variation itself where the address names one, as the shop's
+   *  own variation picker adds it), the listing it belongs to, and whether a
+   *  choice is still to be made first (a range with nothing, or not enough,
+   *  picked - the listing itself is not something a basket takes). Set by the
+   *  server lookup; carried for another module's buttons under the cards
+   *  (lib/slots.ts), never used by Live chat itself. */
+  basket?: ChatProductBasket
 }
+
+export type ChatProductBasket = { productId: string; listingId: string; needsChoice: boolean }
 
 /** The line the Unified Inbox prints a chosen delivery as, under the product:
  *  'Delivery: Express flat-pack - £25.00 + VAT'. Restated rather than imported

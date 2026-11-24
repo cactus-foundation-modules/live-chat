@@ -19,7 +19,8 @@ import { cleanEmail, cleanName, cleanPhone, filesProblem } from '@/modules/chat/
 import { storeFiles, StorageUnavailableError } from '@/modules/chat/lib/attachments'
 import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
 import { clientMessages } from '@/modules/chat/lib/serialise'
-import { sendOfflineNoticeIfDue } from '@/modules/chat/lib/offline-notice'
+import { settleVisitorMessage } from '@/modules/chat/lib/visitor-message'
+import { getResponder, visitorFacingOnline } from '@/modules/chat/lib/responder'
 import { getConsentState, mayChat } from '@/modules/chat/lib/consent'
 import { linkConversationToVisitor, visitorFromRequest } from '@/modules/chat/lib/visitors'
 import { CONSENT_CATEGORY } from '@/modules/chat/lib/constants'
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
   if (request.nextUrl.searchParams.get('typing') === '1' && conversation.status === 'open') {
     await stampTyping(conversation.id, 'visitor')
   }
-  const { online } = await getChatSettings()
+  // Online when somebody is: the switch, or another module answering them.
+  const online = await visitorFacingOnline((await getChatSettings()).online, conversation.visitorId)
   return NextResponse.json(
     {
       online,
@@ -81,6 +83,8 @@ export async function POST(request: NextRequest) {
   let claim: string | null = null
   // Who we could reply to, once this message's own details are counted.
   let contact: { email: string | null; phone: string | null } = { email: null, phone: null }
+  // The visitor row this chat belongs to, when they agreed to be listed.
+  let visitorId: string | null = null
 
   if (!conversation) {
     const ipHash = hashIp(await getClientIp(request))
@@ -106,9 +110,13 @@ export async function POST(request: NextRequest) {
     conversationId = id
     // A visitor already on the visitor list: their chat shows where they are.
     const visitor = await visitorFromRequest(request).catch(() => null)
-    if (visitor) await linkConversationToVisitor(id, visitor.id)
+    if (visitor) {
+      await linkConversationToVisitor(id, visitor.id)
+      visitorId = visitor.id
+    }
   } else {
     conversationId = conversation.id
+    visitorId = conversation.visitorId
     if (await countVisitorMessages(conversation.id, new Date(Date.now() - 60 * 1000)) >= MESSAGES_PER_MINUTE) {
       return errorResponse('Slow down a touch - please wait a moment before sending more.', 429)
     }
@@ -130,10 +138,18 @@ export async function POST(request: NextRequest) {
     return errorResponse('That file could not be uploaded. Please try again.', 502)
   }
 
-  const message = await insertMessage({ conversationId, sender: 'visitor', body, attachments })
-  // Written while we are offline: say so in the chat itself, brand new chats
-  // included, and ask how to reach them if we have no way to.
-  const notice = await sendOfflineNoticeIfDue(conversationId, settings, contact)
+  // Another module answering chats is offered the message first; with none
+  // installed this is the message counted unread and, written while we are
+  // offline, the reply saying so in the chat itself (brand new chats included,
+  // asking how to reach them if we have no way to). See lib/visitor-message.ts.
+  const responder = await getResponder()
+  const message = await insertMessage({ conversationId, sender: 'visitor', body, attachments, countUnread: !responder })
+  const { notice } = await settleVisitorMessage(
+    responder,
+    { conversationId, messageId: message.id, visitorId, newConversation: claim !== null },
+    settings,
+    contact,
+  )
   after(async () => {
     await syncAgentAlert()
     await announce(conversationId)

@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { FILE_ACCEPT, MAX_MESSAGE_CHARS } from '@/modules/chat/lib/constants'
 import { filesProblem } from '@/modules/chat/lib/text'
 import { splitMessage, type ChatProduct } from '@/modules/chat/lib/product-links'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
+import type { ChatSlots } from '@/modules/chat/lib/slots'
 
 // The pieces every chat surface shares: the visitor's widget, the admin bubble
 // on the site and the inbox tab. Colours are the site's own tokens throughout,
@@ -121,6 +122,10 @@ html[data-cch-cart=full] .cch-dock{display:none}
 .cch-item-preview{font-size:13px;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cch-item-tags{display:inline-flex;gap:4px;flex:none}
 .cch-tag{font-size:11px;font-weight:600;border:1px solid var(--color-border-strong);border-radius:999px;padding:1px 8px;color:var(--color-text-secondary);background:var(--color-surface)}
+.cch-meta .cch-tag{display:inline-block;margin-left:6px;padding:0 6px;line-height:16px;vertical-align:middle}
+.cch-slot{display:flex;flex-wrap:wrap;gap:6px;max-width:82%}
+.cch-slot.theirs{align-self:flex-start}
+.cch-slot.mine{align-self:flex-end}
 .cch-tabs{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--color-border);background:var(--color-surface)}
 .cch-visitor{display:flex;flex-direction:column;gap:6px;font-size:14px}
 .cch-visitor p{margin:0}
@@ -181,6 +186,25 @@ const noSubscribe = () => () => {}
 export function BodyPortal({ children }: { children: React.ReactNode }) {
   const mounted = useSyncExternalStore(noSubscribe, () => true, () => false)
   return mounted ? createPortal(children, document.body) : null
+}
+
+/** Wraps a component another module put in one of Live chat's slots
+ *  (lib/slots.ts). One that throws while drawing is dropped, quietly, and the
+ *  chat carries on: a visitor's chat is worth more than somebody's button. */
+export class SlotBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false }
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true }
+  }
+
+  override componentDidCatch(error: unknown) {
+    console.error('[chat] a component another module added to the chat failed, so it is left out', error)
+  }
+
+  override render() {
+    return this.state.failed ? null : this.props.children
+  }
 }
 
 export function ChatStyles() {
@@ -246,6 +270,7 @@ export function MessageList({
   children,
   theirName,
   receipt,
+  productActions: ProductActions = null,
 }: {
   messages: ClientMessage[]
   mine: 'visitor' | 'agent'
@@ -255,6 +280,9 @@ export function MessageList({
   theirName?: string
   /** A small line under one message: "Seen", "Sent". */
   receipt?: { id: number; text: string } | null
+  /** Another module's buttons under a message drawn with product cards
+   *  (lib/slots.ts). The visitor's widget only. */
+  productActions?: ChatSlots['productActions']
 }) {
   const body = useRef<HTMLDivElement>(null)
   const stuck = useRef(true)
@@ -303,9 +331,10 @@ export function MessageList({
         const prev = messages[i - 1]
         const showMeta = !prev || prev.sender !== m.sender || (prev.authorName ?? '') !== (m.authorName ?? '') || new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() > 5 * 60_000
         const who = m.sender === 'visitor' ? (mine === 'visitor' ? 'You' : (theirName || 'Visitor')) : (m.authorName ?? 'Us')
+        const products = ProductActions ? Object.values(m.products ?? {}) : []
         return (
           <div key={m.id} style={{ display: 'contents' }}>
-            {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who}</div> : null}
+            {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who}{m.label ? <span className="cch-tag">{m.label}</span> : null}</div> : null}
             <div className={`cch-msg ${isMine ? 'mine' : 'theirs'}`}>
               <MessageText text={m.body} products={m.products ?? {}} />
               {m.attachments.map((a) => (
@@ -317,6 +346,11 @@ export function MessageList({
                 </a>
               ))}
             </div>
+            {ProductActions && products.length > 0 ? (
+              <div className={`cch-slot ${isMine ? 'mine' : 'theirs'}`}>
+                <SlotBoundary><ProductActions products={products} /></SlotBoundary>
+              </div>
+            ) : null}
             <div className={`cch-time${isMine ? ' mine' : ''}`}><time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString('en-GB')}>{messageTime(m.createdAt)}</time></div>
             {receipt && receipt.id === m.id ? <div className={`cch-meta cch-receipt${isMine ? ' mine' : ''}`}>{receipt.text}</div> : null}
           </div>

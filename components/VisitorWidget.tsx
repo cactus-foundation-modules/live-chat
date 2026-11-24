@@ -9,9 +9,11 @@ import { withoutLinks } from '@/modules/chat/lib/links'
 import { publishUnread } from '@/modules/chat/lib/unread'
 import { grantChatConsent, openCookieSettings, readChatConsent, type ChatConsent } from '@/modules/chat/lib/consent-client'
 import type { ClientMessage } from '@/modules/chat/lib/serialise'
+import type { ChatSlots } from '@/modules/chat/lib/slots'
 import { BodyPortal, ChatStyles, Composer, MessageList, TypingNote, mergeMessages, messageRequest, readError } from './ui'
 import { playChime, playSent, unlockAudio } from './sound'
 import { useCartDrawerDodge } from './cart-dock'
+import { setVisitorView } from './visitor-view'
 import { forgetPresence, usePresence, type PresenceReply } from './presence'
 
 // The chat as a visitor sees it. Nothing is stored and nothing is fetched until
@@ -78,9 +80,14 @@ type Props = {
   consent: ConsentBannerConfig | null
   /** The owner's visitor list is switched on. */
   track: boolean
+  /** Another module's buttons under product cards (lib/slots.ts), picked on the server. */
+  productActions?: ChatSlots['productActions']
+  /** A signed-in colleague looking at the chat as a visitor sees it
+   *  (components/visitor-view.ts): shows the way back to the team's view. */
+  asColleague?: boolean
 }
 
-export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGreeting, transcripts, hideOnMobile, online: initialOnline, awayLabel, awayMessage, consent, track }: Props) {
+export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGreeting, transcripts, hideOnMobile, online: initialOnline, awayLabel, awayMessage, consent, track, productActions = null, asColleague = false }: Props) {
   const [online, setOnline] = useState(initialOnline)
   useCartDrawerDodge(position)
   const label = online ? onlineLabel : awayLabel
@@ -480,6 +487,11 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                   {saved.muted ? <path d="M23 9l-6 6M17 9l6 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14" />}
                 </svg>
               </button>
+              {asColleague ? (
+                <button type="button" aria-label="Back to the team view" title="Back to the team view" onClick={() => setVisitorView(false)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                </button>
+              ) : null}
               <button type="button" aria-label="Minimise chat" onClick={() => setOpen(false)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
               </button>
@@ -505,7 +517,7 @@ export function VisitorWidget({ position, label: onlineLabel, greeting: onlineGr
                 onCancel={cancelEditing}
               />
             ) : null}
-            <MessageList messages={messages} mine="visitor" intro={messages.some((m) => m.sender === 'agent') ? null : greeting}>
+            <MessageList messages={messages} mine="visitor" intro={messages.some((m) => m.sender === 'agent') ? null : greeting} productActions={productActions}>
               {claim && status === 'open' && agentTyping !== null ? <TypingNote who={agentTyping} /> : null}
               {!allowed && chatConsent ? (
                 <ConsentCard

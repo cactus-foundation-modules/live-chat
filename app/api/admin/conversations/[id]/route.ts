@@ -3,10 +3,8 @@ import { errorResponse } from '@/lib/utils'
 import {
   deleteConversations,
   getConversation,
-  insertMessage,
   listMessages,
   markReadByAgents,
-  setStatus,
   stampTyping,
   storedFilesFor,
 } from '@/modules/chat/lib/db'
@@ -15,7 +13,8 @@ import { clientConversation, clientMessages, clientVisitor } from '@/modules/cha
 import { getVisitor } from '@/modules/chat/lib/visitors'
 import { deleteStoredFiles } from '@/modules/chat/lib/attachments'
 import { agentName } from '@/modules/chat/lib/agent'
-import { announce, syncAgentAlert } from '@/modules/chat/lib/notify'
+import { syncAgentAlert } from '@/modules/chat/lib/notify'
+import { closeChatAsAgent } from '@/modules/chat/lib/reply'
 import { PERM_MANAGE, PERM_REPLY, PERM_VIEW } from '@/modules/chat/lib/constants'
 
 type Params = { params: Promise<{ id: string }> }
@@ -70,14 +69,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json().catch(() => null)) as { status?: unknown } | null
   if (body?.status !== 'closed') return errorResponse('A chat can only be ended, not reopened.')
   if (conversation.status !== 'closed') {
-    const name = await agentName(auth.user.id)
-    await insertMessage({ conversationId: id, sender: 'system', body: `${name ?? 'We'} ended the chat.` })
-    await setStatus(id, 'closed')
-    await markReadByAgents(id)
-    after(async () => {
-      await syncAgentAlert()
-      await announce(id)
-    })
+    await closeChatAsAgent(id, await agentName(auth.user.id))
   }
   return NextResponse.json({ ok: true })
 }

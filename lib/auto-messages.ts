@@ -1,5 +1,6 @@
 import { createConversation, deleteConversations, insertMessage } from './db'
 import type { ChatSettings } from './settings'
+import type { VisitorAnswering } from './responder'
 import { newConversationId } from './visitor'
 import {
   claimCartMessage,
@@ -19,6 +20,12 @@ import {
 // visitor has no chat going. Nothing here runs on a timer of its own: every
 // visitor check-in asks "is anything due?", and when something is waiting the
 // answer says how long until it is, so the widget checks in again right then.
+//
+// "Somebody is answering" is the Online switch, or another module answering
+// chats (lib/responder.ts). When the responder is the one answering this
+// visitor (switch on or off), the messages go under its name and author id, so
+// they read as its own and carry its label; otherwise, with the switch on,
+// under the owner's chosen name exactly as they always have.
 
 /** A basket message this long overdue (the visitor wandered off) is not sent at all. */
 const CART_STALE_MS = 10 * 60 * 1000
@@ -31,7 +38,18 @@ const CART: Kind = { claim: claimCartMessage, release: releaseCartMessage, label
 
 type Outcome = 'sent' | 'chat-going' | 'failed'
 
-async function sendOnce(kind: Kind, visitorId: string, path: string, text: string, author: string): Promise<Outcome> {
+/** Who the automatic messages go out as. */
+export type AutoMessageAuthor = { name: string; userId: string | null }
+
+/** The author for this visitor's automatic messages, or null when nobody is
+ *  answering and none may go. */
+export function autoMessageAuthor(settings: ChatSettings, answering: VisitorAnswering): AutoMessageAuthor | null {
+  if (answering.responder) return { name: answering.responder.authorName, userId: answering.responder.authorId }
+  if (settings.online) return { name: settings.autoMessageAuthor, userId: null }
+  return null
+}
+
+async function sendOnce(kind: Kind, visitorId: string, path: string, text: string, author: AutoMessageAuthor): Promise<Outcome> {
   if (await openChatWithVisitor(visitorId)) return 'chat-going'
   if (!await kind.claim(visitorId)) return 'chat-going'
   let conversationId: string | null = null
@@ -40,7 +58,7 @@ async function sendOnce(kind: Kind, visitorId: string, path: string, text: strin
     if (!tokenHash) throw new Error('visitor has no secret')
     conversationId = newConversationId()
     await createConversation({ id: conversationId, tokenHash, name: null, email: null, pageUrl: path, ipHash: null, visitorId, startedBy: 'agent', autoStarted: true })
-    await insertMessage({ conversationId, sender: 'agent', authorName: author, body: text })
+    await insertMessage({ conversationId, sender: 'agent', authorUserId: author.userId, authorName: author.name, body: text })
     return 'sent'
   } catch (err) {
     // A chat that never got its message is not a chat; let the next check-in try again.
@@ -52,14 +70,17 @@ async function sendOnce(kind: Kind, visitorId: string, path: string, text: strin
 }
 
 /** Sends whatever has fallen due for this visitor. Returns how many milliseconds
- *  until the next thing falls due, or undefined when nothing is waiting. */
+ *  until the next thing falls due, or undefined when nothing is waiting.
+ *  `answering` is lib/responder.ts's visitorAnswering() for this visitor. */
 export async function runAutoMessages(
   visitorId: string,
   path: string,
   settings: ChatSettings,
   cartAdded: boolean,
+  answering: VisitorAnswering,
 ): Promise<number | undefined> {
-  if (!settings.online) return undefined
+  const author = autoMessageAuthor(settings, answering)
+  if (!author) return undefined
   if (cartAdded && settings.cartMessageEnabled) await markCartAdded(visitorId)
   const times = await getAutoMessageTimes(visitorId)
   if (!times) return undefined
@@ -69,7 +90,7 @@ export async function runAutoMessages(
   if (settings.welcomeEnabled && !times.welcomeSent) {
     const wait = settings.welcomeDelaySeconds * 1000 - times.sinceFirstSeenMs
     if (wait > 0) waits.push(wait)
-    else if (await sendOnce(WELCOME, visitorId, path, settings.welcomeMessage, settings.autoMessageAuthor) === 'sent') {
+    else if (await sendOnce(WELCOME, visitorId, path, settings.welcomeMessage, author) === 'sent') {
       // They have a chat now, so a basket message on top would be a second hello.
       await clearCartAdded(visitorId)
       return undefined
@@ -82,7 +103,7 @@ export async function runAutoMessages(
     if (wait > 0) waits.push(wait)
     else if (times.sinceCartAddedMs > delayMs + CART_STALE_MS) await clearCartAdded(visitorId)
     else {
-      const outcome = await sendOnce(CART, visitorId, path, settings.cartMessage, settings.autoMessageAuthor)
+      const outcome = await sendOnce(CART, visitorId, path, settings.cartMessage, author)
       // Sent, or they are already talking to us: either way nothing more is owed.
       if (outcome !== 'failed') await clearCartAdded(visitorId)
     }

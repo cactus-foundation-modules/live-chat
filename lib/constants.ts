@@ -68,3 +68,14 @@ export const TYPING_WINDOW_MS = 7_000
 /** How recently somebody must have pressed a key to count as still typing when
  *  their next poll goes out. */
 export const TYPING_IDLE_MS = 4_000
+
+/** What every message written by another module answering chats carries in
+ *  chat_messages.author_user_id ("module:<name>"), so it can never be taken
+ *  for a colleague's user id. See lib/responder.ts. */
+export const RESPONDER_AUTHOR_PREFIX = 'module:'
+
+/** Set by a colleague who wants to see the chat on the site as a visitor does
+ *  (and try it, the way a visitor would), instead of the team's bubble. A
+ *  session cookie, only ever set by a signed-in colleague's own click, and only
+ *  believed alongside their session. See components/visitor-view.ts. */
+export const AS_VISITOR_COOKIE = 'cch_as_visitor'
