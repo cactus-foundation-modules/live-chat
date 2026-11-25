@@ -91,6 +91,25 @@ async function claimOfflineNotice(conversationId: string, offlineSince: Date | n
 }
 
 /**
+ * Who the reply goes out as. In a chat another module's assistant has been
+ * answering, its name, so it reads as the assistant
+ * stepping aside, not as a person: learned on a live site, where it went out
+ * under the owner's chosen name ("Sarah"), as though a colleague who was not
+ * there had written. Otherwise the owner's chosen name, as always. Never the
+ * assistant's author id: the notice is the site's, not something the
+ * assistant said, and must not read back to it as its own turn.
+ */
+async function noticeAuthor(conversationId: string, settings: ChatSettings): Promise<string> {
+  const rows = await prisma.$queryRaw<{ author_name: string | null; author_user_id: string | null }[]>`
+    SELECT m."author_name", m."author_user_id" FROM "chat_messages" m
+     WHERE m."conversation_id" = ${conversationId} AND m."sender" = 'agent'
+       AND m."author_user_id" LIKE ${`${RESPONDER_AUTHOR_PREFIX}%`}
+     ORDER BY m."id" DESC LIMIT 1
+  `
+  return rows[0]?.author_name?.trim() || settings.autoMessageAuthor
+}
+
+/**
  * Sends the reply when it is owed, and hands it back so the visitor's own
  * answer can carry it straight away. Never throws: the visitor's message is
  * already safe, and a reply that fails to go is a reply, not a lost message.
@@ -107,7 +126,7 @@ export async function sendOfflineNoticeIfDue(
     return await insertMessage({
       conversationId,
       sender: 'agent',
-      authorName: settings.autoMessageAuthor,
+      authorName: await noticeAuthor(conversationId, settings),
       body: offlineNoticeText(claimed.answered ? settings.offlineNoticeMessage : settings.awayReplyMessage, contact),
     })
   } catch (err) {
@@ -142,7 +161,7 @@ export async function tellWaitingVisitorsWeAreOffline(settings: ChatSettings): P
     const notice = await sendOfflineNoticeIfDue(chat.id, settings, { email: chat.visitor_email, phone: chat.visitor_phone })
     if (!notice) continue
     told += 1
-    await pushToVisitor(chat.id, settings.autoMessageAuthor, notice.body)
+    await pushToVisitor(chat.id, notice.authorName ?? settings.autoMessageAuthor, notice.body)
     await announce(chat.id).catch((err: unknown) => console.error('[chat] could not announce the offline reply', err))
   }
   return told
