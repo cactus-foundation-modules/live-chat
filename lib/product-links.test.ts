@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { messageHtml, productAddressesIn, splitMessage, type ChatProduct } from './product-links'
-import { slugFromAddress } from './products'
+import { deliveryEntry, deliveryFromAddress, slugFromAddress } from './products'
 
 const OSLO: ChatProduct = {
   url: 'https://example.com/oslo-chair',
@@ -63,7 +63,7 @@ describe('slugFromAddress', () => {
 
 describe('a delivery quoted beside a product', () => {
   const address = 'https://example.com/oslo-chair?delivery-service=express'
-  const withDelivery: ChatProduct = { ...OSLO, url: 'https://example.com/oslo-chair', delivery: { label: 'Express', price: '£25.00 + VAT' } }
+  const withDelivery: ChatProduct = { ...OSLO, url: 'https://example.com/oslo-chair', delivery: { key: 'express', label: 'Express', price: '£25.00 + VAT' } }
 
   it('swallows the inbox delivery line under the card that already shows it', () => {
     const text = `Try this:\n[Oslo Chair](${address}) - £99.00\nDelivery: Express - £25.00 + VAT\nAny questions, shout.`
@@ -89,3 +89,24 @@ describe('a delivery quoted beside a product', () => {
   })
 })
 
+
+describe('the delivery service a card carries', () => {
+  it('reads the service key from the address, and only a well-formed one', () => {
+    expect(deliveryFromAddress('https://example.com/oslo-chair?delivery-service=next_day-am')).toBe('next_day-am')
+    expect(deliveryFromAddress('https://example.com/oslo-chair?delivery-service=%3Cscript%3E')).toBeNull()
+    expect(deliveryFromAddress('https://example.com/oslo-chair')).toBeNull()
+    expect(deliveryFromAddress('not an address')).toBeNull()
+  })
+
+  it('keeps the key beside the label and price, and calls nothing Free', () => {
+    expect(deliveryEntry('express', 'Express', '£25.00 + VAT')).toEqual({ key: 'express', label: 'Express', price: '£25.00 + VAT' })
+    expect(deliveryEntry('standard', 'Standard', null)).toEqual({ key: 'standard', label: 'Standard', price: 'Free' })
+  })
+
+  it('draws the same delivery line with the key present', () => {
+    const product: ChatProduct = { ...OSLO, delivery: deliveryEntry('express', 'Express', '£25.00') }
+    const html = messageHtml(`[Oslo Chair](${OSLO.url}) - £99.00`, { [OSLO.url]: product })
+    expect(html).toContain('Delivery: Express')
+    expect(html).not.toContain('express<')
+  })
+})

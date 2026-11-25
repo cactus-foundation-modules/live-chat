@@ -168,4 +168,6 @@ types are in `lib/slots.ts`:
 
 Each `ChatProduct` carries `basket: { productId, listingId, needsChoice }`, the
 shop's own ids for adding exactly that product or variation, when the shop
-could say.
+could say. Where the address names a delivery service the shop still offers for
+it (`delivery-service=<key>`), it also carries `delivery: { key, label, price }`:
+the shop's own key for that service, its name and today's price.

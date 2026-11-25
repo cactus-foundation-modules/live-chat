@@ -25,8 +25,10 @@ export type ChatProduct = {
   /** The delivery service quoted beside it, where the address names one (the
    *  Unified Inbox puts `delivery-service=<key>` on a product it sends with a
    *  delivery chosen) and the shop still offers it for this product. Priced
-   *  today, like the product: '£25.00 + VAT', or 'Free'. */
-  delivery?: { label: string; price: string } | null
+   *  today, like the product: '£25.00 + VAT', or 'Free'. `key` is the shop's
+   *  own key for the service, as the address named it, for anything that
+   *  needs to choose that same service (a basket button, say). */
+  delivery?: ChatProductDelivery | null
   /** What a basket needs to add exactly this, in the shop's own ids: the row
    *  to add (the variation itself where the address names one, as the shop's
    *  own variation picker adds it), the listing it belongs to, and whether a
@@ -36,6 +38,8 @@ export type ChatProduct = {
    *  (lib/slots.ts), never used by Live chat itself. */
   basket?: ChatProductBasket
 }
+
+export type ChatProductDelivery = { key: string; label: string; price: string }
 
 export type ChatProductBasket = { productId: string; listingId: string; needsChoice: boolean }
 

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { getSiteUrlOrNull } from '@/lib/config/env'
-import type { ChatProduct } from './product-links'
+import type { ChatProduct, ChatProductDelivery } from './product-links'
 import { productAddressesIn } from './product-links'
 
 // The site's own products, behind the addresses people put in a chat.
@@ -177,7 +177,7 @@ const DELIVERY_PARAM = 'delivery-service'
 const DELIVERY_KEY = /^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$/
 
 /** The delivery service a product link names, or null. */
-function deliveryFromAddress(address: string): string | null {
+export function deliveryFromAddress(address: string): string | null {
   try {
     const key = new URL(address).searchParams.get(DELIVERY_PARAM)?.trim() ?? ''
     return DELIVERY_KEY.test(key) ? key : null
@@ -388,6 +388,12 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
   return { id, taxClassId: row.tax_class_id, product: { ...base, options: null, price: priceLine(own, false, row.tax_class_id, s), basket } }
 }
 
+/** A validated delivery service as a card carries it: the key the address
+ *  named, the label the shop gives it and its price line ('Free' at nothing). */
+export function deliveryEntry(key: string, label: string, price: string | null): ChatProductDelivery {
+  return { key, label, price: price ?? 'Free' }
+}
+
 /**
  * The delivery service a link names, priced for this product as the shop would
  * quote it today, or null where it is no longer offered for it.
@@ -398,7 +404,7 @@ async function productBySlug(slug: string, s: Settings, picks: Map<string, strin
  * simply empty. The figure arrives on the product's own side of tax and is taxed
  * at the product's own rate, so it is priced exactly as the product is.
  */
-async function deliveryFor(key: string, found: Found, s: Settings): Promise<{ label: string; price: string } | null> {
+async function deliveryFor(key: string, found: Found, s: Settings): Promise<ChatProductDelivery | null> {
   const { modulePublicExtensionPointComponents } = await import('@/lib/modules/extension-points.public')
   const registered: Record<string, unknown> = modulePublicExtensionPointComponents['shop.product-delivery-timing'] ?? {}
   const provider = Object.values(registered).find(
@@ -415,7 +421,7 @@ async function deliveryFor(key: string, found: Found, s: Settings): Promise<{ la
     const label = typeof option.label === 'string' ? option.label.trim() : ''
     const amount = typeof option.price === 'number' && Number.isFinite(option.price) ? option.price : null
     if (!label || amount === null || amount < 0) return null
-    return { label, price: priceLine(amount, false, found.taxClassId, s) ?? 'Free' }
+    return deliveryEntry(key, label, priceLine(amount, false, found.taxClassId, s))
   }
   return null
 }
