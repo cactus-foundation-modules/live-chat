@@ -139,9 +139,14 @@ export function splitMessage(text: string, products: Readonly<Record<string, Cha
     let from = 0
     for (const { at, url } of bareAddresses(part)) {
       const product = products[url]
-      if (!product) continue
       pushText(part.slice(from, at))
-      pushProduct(product, [])
+      if (product) pushProduct(product, [])
+      else {
+        // Any other web address is a link too: written out bare it was only
+        // words, and a visitor cannot open words ("that url is not linkable").
+        eatLeading = null
+        out.push({ label: url, url })
+      }
       from = at + url.length
     }
     pushText(part.slice(from))

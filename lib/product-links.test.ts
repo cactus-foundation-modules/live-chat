@@ -37,9 +37,18 @@ describe('product addresses in a chat message', () => {
     expect(splitMessage(text, { 'https://example.com/oslo-chair': OSLO })).toEqual([{ product: OSLO }, ' - my favourite'])
   })
 
-  it('leaves an address that is not a product exactly as it was', () => {
-    const text = 'See https://example.com/about and [x](https://x.test/a)'
-    expect(splitMessage(text, {})).toEqual(['See https://example.com/about and ', { label: 'x', url: 'https://x.test/a' }])
+  it('makes an address that is not a product a link, keeping the full stop after it', () => {
+    const text = 'See https://example.com/about. And [x](https://x.test/a)'
+    expect(splitMessage(text, {})).toEqual([
+      'See ',
+      { label: 'https://example.com/about', url: 'https://example.com/about' },
+      '. And ',
+      { label: 'x', url: 'https://x.test/a' },
+    ])
+  })
+
+  it('never links anything but a web address', () => {
+    expect(splitMessage('javascript:alert(1) and data:text/html,x', {})).toEqual(['javascript:alert(1) and data:text/html,x'])
   })
 
   it('escapes the words and builds the card from the shop data only', () => {
