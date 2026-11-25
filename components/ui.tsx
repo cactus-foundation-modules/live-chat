@@ -336,7 +336,7 @@ export function MessageList({
           <div key={m.id} style={{ display: 'contents' }}>
             {showMeta ? <div className={`cch-meta${isMine ? ' mine' : ''}`}>{who}{m.label ? <span className="cch-tag">{m.label}</span> : null}</div> : null}
             <div className={`cch-msg ${isMine ? 'mine' : 'theirs'}`}>
-              <MessageText text={m.body} products={m.products ?? {}} />
+              <MessageText text={m.body} products={m.products ?? {}} sameTab={mine === 'visitor'} />
               {m.attachments.map((a) => (
                 <a key={a.id} className="cch-file" href={a.url} target="_blank" rel="noopener noreferrer">
                   {a.contentType.startsWith('image/') && !a.contentType.includes('heic')
@@ -371,21 +371,39 @@ export function MessageList({
  *  page drawn as the product - picture, name, price - the way the Unified Inbox
  *  shows one. Elements, never markup, so nothing in a message can be anything
  *  but text, an anchor or a card built from the shop's own data. */
-function MessageText({ text, products }: { text: string; products: Readonly<Record<string, ChatProduct>> }) {
+function MessageText({ text, products, sameTab }: { text: string; products: Readonly<Record<string, ChatProduct>>; sameTab: boolean }) {
   return (
     <>
       {splitMessage(text, products).map((part, i) => {
         if (typeof part === 'string') return <span key={i}>{part}</span>
-        if ('label' in part) return <a key={i} href={part.url} target="_blank" rel="noopener noreferrer">{part.label}</a>
-        return <ProductCard key={i} product={part.product} />
+        if ('label' in part) return <a key={i} href={part.url} {...linkTarget(part.url, sameTab)}>{part.label}</a>
+        return <ProductCard key={i} product={part.product} sameTab={sameTab} />
       })}
     </>
   )
 }
 
-function ProductCard({ product }: { product: ChatProduct }) {
+/** Where a link in a message opens. In the visitor's own widget, a page of
+ *  this site opens in the same tab - the chat reopens itself on the next page,
+ *  so nothing is lost - and only an address off the site gets a new tab. On the
+ *  team's side every link gets a new tab, so the inbox stays where it was. */
+function linkTarget(url: string, sameTab: boolean): { target?: string; rel?: string } {
+  if (sameTab && isThisSite(url)) return {}
+  return { target: '_blank', rel: 'noopener noreferrer' }
+}
+
+function isThisSite(url: string): boolean {
+  if (typeof window === 'undefined') return url.startsWith('/') && !url.startsWith('//')
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin
+  } catch {
+    return false
+  }
+}
+
+function ProductCard({ product, sameTab }: { product: ChatProduct; sameTab: boolean }) {
   return (
-    <a className="cch-product" href={product.url} target="_blank" rel="noopener noreferrer">
+    <a className="cch-product" href={product.url} {...linkTarget(product.url, sameTab)}>
       {product.imageUrl
         // eslint-disable-next-line @next/next/no-img-element -- a picture inside a chat bubble on any site; next/image needs its host configured
         ? <img src={product.imageUrl} alt="" width={56} height={56} loading="lazy" />
